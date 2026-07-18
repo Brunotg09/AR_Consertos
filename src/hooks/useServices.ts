@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 
 export interface ServiceItem {
@@ -25,10 +25,10 @@ export function useServices(options?: { activeOnly?: boolean; type?: string }) {
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
 
   const fetchServices = useCallback(async () => {
     try {
-      setLoading(true);
       let query = supabase
         .from("services")
         .select("*")
@@ -45,18 +45,25 @@ export function useServices(options?: { activeOnly?: boolean; type?: string }) {
       const { data, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
-      setServices(data || []);
-      setError(null);
+      if (mountedRef.current) {
+        setServices(data || []);
+        setError(null);
+      }
     } catch (err) {
       console.error("Error fetching services:", err);
-      setError(err instanceof Error ? err.message : "Erro ao buscar serviços");
+      if (mountedRef.current) {
+        setError(err instanceof Error ? err.message : "Erro ao buscar serviços");
+        setServices([]);
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [options?.activeOnly, options?.type]);
 
   useEffect(() => {
+    mountedRef.current = true;
     fetchServices();
+    return () => { mountedRef.current = false; };
   }, [fetchServices]);
 
   const addService = async (service: Omit<ServiceItem, "id" | "created_at" | "updated_at">) => {

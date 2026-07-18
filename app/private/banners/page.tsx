@@ -39,10 +39,13 @@ interface Banner {
   id: number;
   title: string | null;
   subtitle: string | null;
-  image_url: string;
+  image_url: string | null;
   link: string | null;
   active: boolean;
   sort_order: number;
+  accent_color: string;
+  cta_label: string;
+  icon_name: string | null;
   created_at: string;
 }
 
@@ -62,6 +65,9 @@ export default function BannersPage() {
     link: "",
     active: true,
     sort_order: 0,
+    accent_color: "#E30613",
+    cta_label: "Saiba Mais",
+    icon_name: "" as string,
   });
   const [formImage, setFormImage] = useState("");
 
@@ -93,6 +99,9 @@ export default function BannersPage() {
       link: "",
       active: true,
       sort_order: 0,
+      accent_color: "#E30613",
+      cta_label: "Saiba Mais",
+      icon_name: "",
     });
     setFormImage("");
     setSelectedBanner(null);
@@ -111,8 +120,11 @@ export default function BannersPage() {
       link: banner.link || "",
       active: banner.active,
       sort_order: banner.sort_order,
+      accent_color: banner.accent_color || "#E30613",
+      cta_label: banner.cta_label || "Saiba Mais",
+      icon_name: banner.icon_name || "",
     });
-    setFormImage(banner.image_url);
+    setFormImage(banner.image_url || "");
     setEditDialogOpen(true);
   };
 
@@ -155,8 +167,8 @@ export default function BannersPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formImage) {
-      toast.error("Imagem é obrigatória");
+    if (!formImage && !formData.icon_name) {
+      toast.error("Imagem ou ícone é obrigatório");
       return;
     }
 
@@ -165,10 +177,13 @@ export default function BannersPage() {
       const bannerData = {
         title: formData.title || null,
         subtitle: formData.subtitle || null,
-        image_url: formImage,
+        image_url: formImage || null,
         link: formData.link || null,
         active: formData.active,
         sort_order: formData.sort_order,
+        accent_color: formData.accent_color,
+        cta_label: formData.cta_label || "Saiba Mais",
+        icon_name: formData.icon_name || null,
       };
 
       if (selectedBanner) {
@@ -303,13 +318,25 @@ export default function BannersPage() {
                 banner.active ? "border-white/[0.06]" : "border-white/[0.02] opacity-60"
               }`}
             >
-              {/* Image */}
-              <div className="aspect-[16/9] w-full overflow-hidden bg-black/20">
-                <img
-                  src={banner.image_url}
-                  alt={banner.title || "Banner"}
-                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                />
+              {/* Image or Icon */}
+              <div
+                className="aspect-[16/9] w-full overflow-hidden flex items-center justify-center"
+                style={{ backgroundColor: banner.image_url ? "transparent" : `${banner.accent_color || '#E30613'}15` }}
+              >
+                {banner.image_url ? (
+                  <img
+                    src={banner.image_url}
+                    alt={banner.title || "Banner"}
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                ) : (
+                  <div
+                    className="flex h-16 w-16 items-center justify-center rounded-2xl"
+                    style={{ backgroundColor: `${banner.accent_color || '#E30613'}20`, color: banner.accent_color || '#E30613' }}
+                  >
+                    <span className="text-3xl font-bold">{(banner.icon_name || 'Wrench')[0]}</span>
+                  </div>
+                )}
               </div>
 
               {/* Overlay */}
@@ -328,7 +355,7 @@ export default function BannersPage() {
                       </p>
                     )}
                     {banner.link && (
-                      <p className="mt-1 text-xs text-[#E30613] truncate">
+                      <p className="mt-1 text-xs truncate" style={{ color: banner.accent_color || '#E30613' }}>
                         {banner.link}
                       </p>
                     )}
@@ -400,7 +427,7 @@ export default function BannersPage() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto border-white/[0.06] bg-[#0f0f0f]">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-white">
               {selectedBanner ? "Editar Banner" : "Novo Banner"}
@@ -410,7 +437,9 @@ export default function BannersPage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Image Upload */}
             <div className="space-y-3">
-              <Label className="text-white/70">Imagem *</Label>
+              <Label className="text-white/70">
+                Imagem {formData.icon_name ? "(opcional se usar ícone)" : "*"}
+              </Label>
 
               {formImage ? (
                 <div className="relative group">
@@ -500,6 +529,62 @@ export default function BannersPage() {
               />
             </div>
 
+            {/* Ícone */}
+            <div className="space-y-2">
+              <Label htmlFor="icon_name" className="text-white/70">
+                Ícone (quando não usa imagem)
+              </Label>
+              <select
+                id="icon_name"
+                value={formData.icon_name}
+                onChange={(e) => setFormData({ ...formData, icon_name: e.target.value })}
+                className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-white"
+              >
+                <option value="">Nenhum (usar imagem)</option>
+                <option value="Wrench">🔧 Wrench (Conserto)</option>
+                <option value="Cpu">💻 Cpu (Eletrônica)</option>
+                <option value="Award">🏆 Award (Garantia)</option>
+                <option value="Zap">⚡ Zap (Energia)</option>
+                <option value="Settings">⚙️ Settings (Config)</option>
+              </select>
+            </div>
+
+            {/* Cor de Destaque */}
+            <div className="space-y-2">
+              <Label htmlFor="accent_color" className="text-white/70">
+                Cor de Destaque
+              </Label>
+              <div className="flex gap-2">
+                <input
+                  type="color"
+                  id="accent_color"
+                  value={formData.accent_color}
+                  onChange={(e) => setFormData({ ...formData, accent_color: e.target.value })}
+                  className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent"
+                />
+                <Input
+                  value={formData.accent_color}
+                  onChange={(e) => setFormData({ ...formData, accent_color: e.target.value })}
+                  placeholder="#E30613"
+                  className="flex-1 rounded-xl border-white/10 bg-white/[0.02] text-white"
+                />
+              </div>
+            </div>
+
+            {/* Texto do Botão */}
+            <div className="space-y-2">
+              <Label htmlFor="cta_label" className="text-white/70">
+                Texto do Botão
+              </Label>
+              <Input
+                id="cta_label"
+                value={formData.cta_label}
+                onChange={(e) => setFormData({ ...formData, cta_label: e.target.value })}
+                placeholder="Ex: Ver Serviços"
+                className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+              />
+            </div>
+
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -524,7 +609,7 @@ export default function BannersPage() {
               </Button>
               <Button
                 type="submit"
-                disabled={saving || !formImage}
+                disabled={saving || (!formImage && !formData.icon_name)}
                 className="rounded-xl bg-[#E30613] text-white hover:bg-[#E30613]/90"
               >
                 {saving ? "Salvando..." : "Salvar"}
@@ -536,7 +621,7 @@ export default function BannersPage() {
 
       {/* Delete Confirmation */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent className="border-white/[0.06] bg-[#0f0f0f]">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">Excluir Banner</AlertDialogTitle>
             <AlertDialogDescription className="text-white/70">

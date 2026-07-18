@@ -110,20 +110,23 @@ export default function AdminChatPage() {
     }
 
     const loadMessages = async () => {
-      const { data } = await supabase
-        .from("chat_messages")
-        .select("*")
-        .eq("session_id", selectedSession.id)
-        .order("created_at", { ascending: true });
+      try {
+        const { data } = await supabase
+          .from("chat_messages")
+          .select("*")
+          .eq("session_id", selectedSession.id)
+          .order("created_at", { ascending: true });
 
-      setMessages(data || []);
+        setMessages(data || []);
 
-      // Mark as read
-      await supabase
-        .from("chat_messages")
-        .update({ read_by_admin: true })
-        .eq("session_id", selectedSession.id)
-        .eq("read_by_admin", false);
+        await supabase
+          .from("chat_messages")
+          .update({ read_by_admin: true })
+          .eq("session_id", selectedSession.id)
+          .eq("read_by_admin", false);
+      } catch (e) {
+        console.error("[chat] loadMessages error:", e);
+      }
     };
 
     loadMessages();

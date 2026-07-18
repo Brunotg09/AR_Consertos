@@ -18,7 +18,7 @@ import {
   X,
   ChevronRight,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { supabase, getSessionSafe, withTimeout } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
 
 const adminNavLinks: { href: string; label: string; icon: React.ComponentType<{ className?: string }>; disabled?: boolean; badge?: boolean }[] = [
@@ -52,16 +52,23 @@ export default function PrivateLayout({
     if (!isAdmin) return;
 
     const fetchWaitingCount = async () => {
-      const { count } = await supabase
-        .from("chat_sessions")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "aguardando_admin");
-      setWaitingChatCount(count || 0);
+      try {
+        const { count } = await withTimeout(
+          () => supabase
+            .from("chat_sessions")
+            .select("*", { count: "exact", head: true })
+            .eq("status", "aguardando_admin"),
+          8000,
+          { data: null, error: null, count: 0 }
+        );
+        setWaitingChatCount(count || 0);
+      } catch {
+        setWaitingChatCount(0);
+      }
     };
 
     fetchWaitingCount();
 
-    // Poll every 30 seconds
     const interval = setInterval(fetchWaitingCount, 30000);
 
     return () => clearInterval(interval);
@@ -77,28 +84,29 @@ export default function PrivateLayout({
 
     const checkAdmin = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await getSessionSafe();
         if (cancelled) return;
-        setUser(session?.user ?? null);
 
-        if (session?.user) {
-          const { data } = await supabase
-            .from("user_private")
-            .select("id")
-            .eq("id", session.user.id)
-            .maybeSingle();
-          if (cancelled) return;
-          if (data) {
-            setIsAdmin(true);
-          } else {
-            setIsAdmin(false);
-            router.push("/");
-          }
-        } else {
-          router.push("/private/login");
+        if (!session?.user) {
+          setUser(null);
+          setLoading(false);
+          return;
         }
+
+        setUser(session.user);
+
+        const { data: adminData } = await withTimeout(
+          () => supabase.from("user_private").select("id").eq("id", session.user.id).maybeSingle(),
+          5000,
+          { data: null, error: null }
+        );
+
+        if (cancelled) return;
+
+        setIsAdmin(!!adminData);
       } catch (e) {
         console.error("[admin] checkAdmin error:", e);
+        setIsAdmin(false);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -106,38 +114,19 @@ export default function PrivateLayout({
 
     checkAdmin();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (cancelled) return;
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          const { data } = await supabase
-            .from("user_private")
-            .select("id")
-            .eq("id", session.user.id)
-            .maybeSingle();
-          if (cancelled) return;
-          if (!data) {
-            router.push("/");
-          }
-        } else if (!isLoginPage) {
-          router.push("/private/login");
-        }
-      }
-    );
-
     return () => {
       cancelled = true;
-      listener.subscription.unsubscribe();
     };
-  }, [router, isLoginPage]);
+  }, [isLoginPage]);
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
+    setUser(null);
+    setIsAdmin(false);
     router.push("/");
+    router.refresh();
   };
 
-  // Login page doesn't need admin check
   if (isLoginPage) {
     return <>{children}</>;
   }
@@ -154,7 +143,16 @@ export default function PrivateLayout({
   }
 
   if (!isAdmin) {
-    return null;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#0a0a0a]">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <p className="text-sm text-white/50">Acesso não autorizado.</p>
+          <Link href="/" className="text-sm text-[#E30613] hover:underline">
+            Voltar para o site
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (

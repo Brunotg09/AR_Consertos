@@ -55,99 +55,88 @@ export default function MinhaContaPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
+
     const checkAuth = async () => {
-      console.log("[minha-conta] Iniciando checkAuth...");
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (cancelled) return;
 
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      console.log("[minha-conta] Session data:", sessionData);
-      console.log("[minha-conta] Session error:", sessionError);
-
-      if (!sessionData.session) {
-        console.log("[minha-conta] Nenhuma sessao encontrada, redirecionando para login");
-        router.push("/login?redirect=/minha-conta");
-        return;
-      }
-
-      console.log("[minha-conta] User ID:", sessionData.session.user.id);
-      console.log("[minha-conta] User email:", sessionData.session.user.email);
-
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", sessionData.session.user.id)
-        .single();
-
-      console.log("[minha-conta] Profile query result:", data);
-      console.log("[minha-conta] Profile query error:", error);
-
-      if (error || !data) {
-        console.log("[minha-conta] Perfil nao encontrado, tentando criar...");
-        
-        // Try to create the profile directly
-        const userId = sessionData.session.user.id;
-        const userEmail = sessionData.session.user.email || "";
-        const userName = sessionData.session.user.user_metadata?.full_name || 
-                         sessionData.session.user.user_metadata?.name || "";
-        
-        console.log("[minha-conta] Criando perfil para:", userId, userName, userEmail);
-        
-        const { error: insertError } = await supabase.from("profiles").insert({
-          id: userId,
-          full_name: userName,
-          phone: null,
-          birth_date: null,
-          avatar_url: null,
-          address: null,
-        });
-        
-        console.log("[minha-conta] Insert result:", insertError);
-        
-        if (insertError) {
-          console.log("[minha-conta] ERRO ao criar perfil:", insertError);
-          setError(`Erro ao criar perfil: ${insertError.message}`);
-          setLoading(false);
+        if (!sessionData.session) {
+          router.push("/login?redirect=/minha-conta");
           return;
         }
-        
-        // Now load the newly created profile
-        const { data: newData, error: newError } = await supabase
+
+        const userId = sessionData.session.user.id;
+
+        const { data, error } = await supabase
           .from("profiles")
           .select("*")
           .eq("id", userId)
           .single();
-        
-        console.log("[minha-conta] Novo perfil carregado:", newData);
-        console.log("[minha-conta] Erro ao carregar novo perfil:", newError);
-        
-        if (newError || !newData) {
-          setError("Perfil criado, mas erro ao carregar. Recarregue a pagina.");
-          setLoading(false);
+
+        if (cancelled) return;
+
+        if (error || !data) {
+          const userEmail = sessionData.session.user.email || "";
+          const userName =
+            sessionData.session.user.user_metadata?.full_name ||
+            sessionData.session.user.user_metadata?.name ||
+            "";
+
+          const { error: insertError } = await supabase.from("profiles").insert({
+            id: userId,
+            full_name: userName,
+            phone: null,
+            birth_date: null,
+            avatar_url: null,
+            address: null,
+          });
+
+          if (cancelled) return;
+
+          if (insertError) {
+            setError(`Erro ao criar perfil: ${insertError.message}`);
+            return;
+          }
+
+          const { data: newData } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", userId)
+            .single();
+
+          if (cancelled) return;
+
+          if (newData) {
+            setProfile(newData);
+            setFullName(newData.full_name || "");
+            setPhone(newData.phone || "");
+            setBirthDate(newData.birth_date || "");
+            setAvatarPreview(newData.avatar_url || null);
+            setAddress(newData.address || {});
+          }
           return;
         }
-        
-        console.log("[minha-conta] Perfil criado e carregado com sucesso!");
-        setProfile(newData);
-        setFullName(newData.full_name || "");
-        setPhone(newData.phone || "");
-        setBirthDate(newData.birth_date || "");
-        setAvatarPreview(newData.avatar_url || null);
-        setAddress(newData.address || {});
-        setLoading(false);
-        return;
-      }
 
-      console.log("[minha-conta] Perfil carregado com sucesso:", data);
-      setProfile(data);
-      setFullName(data.full_name || "");
-      setPhone(data.phone || "");
-      setBirthDate(data.birth_date || "");
-      setAvatarPreview(data.avatar_url || null);
-      setAddress(data.address || {});
-      setLoading(false);
+        setProfile(data);
+        setFullName(data.full_name || "");
+        setPhone(data.phone || "");
+        setBirthDate(data.birth_date || "");
+        setAvatarPreview(data.avatar_url || null);
+        setAddress(data.address || {});
+      } catch (e) {
+        console.error("[minha-conta] checkAuth error:", e);
+        setError("Erro ao carregar perfil. Tente novamente.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
 
     checkAuth();
-  }, [router]);
+
+    return () => { cancelled = true; };
+  }, []);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, withTimeout } from "@/lib/supabase";
 import { ServiceIcon } from "@/components/ServiceIcon";
 import { useCart } from "@/contexts/CartContext";
 import { CalendarCheck, ArrowLeft, Tag, Award, Image as ImageIcon, Loader2 } from "lucide-react";
@@ -31,15 +31,24 @@ export default function ServicoDetailPage() {
 
   useEffect(() => {
     async function fetchService() {
-      const { data } = await supabase
-        .from("services")
-        .select("*")
-        .eq("service_id", id)
-        .eq("active", true)
-        .single();
+      try {
+        const { data } = await withTimeout(
+          () => supabase
+            .from("services")
+            .select("*")
+            .eq("service_id", id)
+            .eq("active", true)
+            .single(),
+          8000,
+          { data: null, error: null }
+        );
 
-      setService(data);
-      setLoading(false);
+        setService(data as ServiceData | null);
+      } catch (e) {
+        console.error("[servico] fetchService error:", e);
+      } finally {
+        setLoading(false);
+      }
     }
 
     if (id) fetchService();

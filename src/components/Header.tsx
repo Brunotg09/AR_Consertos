@@ -1,7 +1,6 @@
 "use client";
 
 import { useCart } from "@/contexts/CartContext";
-import { useAdmin } from "@/hooks/useAdmin";
 import { useAuth } from "@/hooks/useAuth";
 import { useServices } from "@/hooks/useServices";
 import {
@@ -49,8 +48,7 @@ export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const { user, signOut } = useAuth();
-  const { isAdmin } = useAdmin();
+  const { user, isAdmin, signOut } = useAuth();
   const { totalItems } = useCart();
 
   useEffect(() => {

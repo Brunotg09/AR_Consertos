@@ -25,7 +25,7 @@ import {
   Banknote,
   QrCode,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { supabase, withTimeout } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -197,16 +197,21 @@ export default function PedidosPage() {
 
       if (error) throw error;
 
-      // Fetch items for each order
-      const ordersWithItems = await Promise.all(
-        (ordersData || []).map(async (order) => {
-          const { data: items } = await supabase
-            .from("order_items")
-            .select("*")
-            .eq("order_id", order.id);
-          return { ...order, items: items || [] };
-        })
-      );
+      const orderIds = (ordersData || []).map((o) => o.id);
+
+      let allItems: OrderItem[] = [];
+      if (orderIds.length > 0) {
+        const { data: itemsData } = await supabase
+          .from("order_items")
+          .select("*")
+          .in("order_id", orderIds);
+        allItems = itemsData || [];
+      }
+
+      const ordersWithItems = (ordersData || []).map((order) => ({
+        ...order,
+        items: allItems.filter((item) => item.order_id === order.id),
+      }));
 
       setOrders(ordersWithItems);
     } catch (error) {
@@ -218,20 +223,36 @@ export default function PedidosPage() {
   }, []);
 
   const fetchClientes = useCallback(async () => {
-    const { data } = await supabase
-      .from("clientes")
-      .select("id, nome, telefone, email, cpf, endereco")
-      .order("nome");
-    setClientes(data || []);
+    try {
+      const result = await withTimeout(
+        () => supabase
+          .from("clientes")
+          .select("id, nome, telefone, email, cpf, endereco")
+          .order("nome"),
+        8000,
+        { data: [], error: null }
+      );
+      setClientes(result.data || []);
+    } catch {
+      setClientes([]);
+    }
   }, []);
 
   const fetchProducts = useCallback(async () => {
-    const { data } = await supabase
-      .from("products")
-      .select("id, name, price, stock, category, condition, images")
-      .eq("active", true)
-      .order("name");
-    setProducts(data || []);
+    try {
+      const { data } = await withTimeout(
+        () => supabase
+          .from("products")
+          .select("id, name, price, stock, category, condition, images")
+          .eq("active", true)
+          .order("name"),
+        8000,
+        { data: null, error: null }
+      );
+      setProducts(data || []);
+    } catch {
+      setProducts([]);
+    }
   }, []);
 
   useEffect(() => {
@@ -986,7 +1007,7 @@ export default function PedidosPage() {
 
       {/* New Order Dialog */}
       <Dialog open={newOrderDialogOpen} onOpenChange={setNewOrderDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto border-white/[0.06] bg-[#0f0f0f] max-w-2xl">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-white">Novo Pedido</DialogTitle>
           </DialogHeader>
@@ -1288,7 +1309,7 @@ export default function PedidosPage() {
 
       {/* Payment Dialog */}
       <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
-        <DialogContent className="border-white/[0.06] bg-[#0f0f0f]">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-white">Adicionar Pagamento</DialogTitle>
           </DialogHeader>
@@ -1368,7 +1389,7 @@ export default function PedidosPage() {
 
       {/* Complete Service Dialog */}
       <Dialog open={completeServiceDialogOpen} onOpenChange={setCompleteServiceDialogOpen}>
-        <DialogContent className="border-white/[0.06] bg-[#0f0f0f]">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-white">Concluir Serviço</DialogTitle>
           </DialogHeader>
@@ -1434,7 +1455,7 @@ export default function PedidosPage() {
 
       {/* Delete Order Confirmation */}
       <AlertDialog open={deleteOrderDialogOpen} onOpenChange={setDeleteOrderDialogOpen}>
-        <AlertDialogContent className="border-white/[0.06] bg-[#0f0f0f]">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">Excluir Pedido</AlertDialogTitle>
             <AlertDialogDescription className="text-white/70">

@@ -25,7 +25,7 @@ import {
   Cell,
   Legend,
 } from "recharts";
-import { supabase } from "@/lib/supabase";
+import { supabase, withTimeout } from "@/lib/supabase";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -67,23 +67,17 @@ export default function AdminDashboard() {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // Fetch orders
-      const { data: orders } = await supabase
-        .from("orders")
-        .select("id, created_at, total, status");
+      const [ordersResult, orderItemsResult, clientsResult] = await Promise.allSettled([
+        withTimeout(() => supabase.from("orders").select("id, created_at, total, status"), 8000, { data: [], error: null }),
+        withTimeout(() => supabase.from("order_items").select("item_type, service_type, price, quantity"), 8000, { data: [], error: null }),
+        withTimeout(() => supabase.from("clientes").select("*", { count: "exact", head: true }), 8000, { data: null, error: null, count: 0 }),
+      ]);
 
-      // Fetch order items for revenue breakdown
-      const { data: orderItems } = await supabase
-        .from("order_items")
-        .select("item_type, service_type, price, quantity");
-
-      // Fetch clients count
-      const { count: clientsCount } = await supabase
-        .from("clientes")
-        .select("*", { count: "exact", head: true });
+      const orders = ordersResult.status === "fulfilled" ? ordersResult.value.data : [];
+      const orderItems = orderItemsResult.status === "fulfilled" ? orderItemsResult.value.data : [];
+      const clientsCount = clientsResult.status === "fulfilled" ? clientsResult.value.count : 0;
 
       if (orders && orderItems) {
-        // Calculate KPIs
         const pedidosHoje = orders.filter(
           (o) => new Date(o.created_at) >= today
         ).length;
@@ -96,7 +90,6 @@ export default function AdminDashboard() {
           .filter((o) => o.status !== "cancelado")
           .reduce((sum, o) => sum + Number(o.total || 0), 0);
 
-        // Calculate revenue by segment
         let receitaConvencional = 0;
         let receitaInverter = 0;
         let receitaProdutos = 0;
@@ -124,14 +117,12 @@ export default function AdminDashboard() {
           receitaProdutos,
         });
 
-        // Set chart data
         setChartData([
           { name: "Convencional", value: receitaConvencional },
           { name: "Inverter", value: receitaInverter },
           { name: "Produtos", value: receitaProdutos },
         ]);
 
-        // Set recent orders
         const sorted = [...orders]
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
           .slice(0, 5);

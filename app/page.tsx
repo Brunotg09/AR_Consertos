@@ -5,22 +5,30 @@ import { ArrowRight, Cpu, ShoppingBag, Wrench } from "lucide-react";
 import Link from "next/link";
 
 async function getServices() {
-  const { data } = await supabase
-    .from("services")
-    .select("*")
-    .eq("active", true)
-    .order("sort_order", { ascending: true });
-  return data || [];
+  try {
+    const { data } = await supabase
+      .from("services")
+      .select("*")
+      .eq("active", true)
+      .order("sort_order", { ascending: true });
+    return data || [];
+  } catch {
+    return [];
+  }
 }
 
 async function getProducts() {
-  const { data } = await supabase
-    .from("products")
-    .select("*")
-    .eq("active", true)
-    .order("id", { ascending: false })
-    .limit(4);
-  return data || [];
+  try {
+    const { data } = await supabase
+      .from("products")
+      .select("*")
+      .eq("active", true)
+      .order("id", { ascending: false })
+      .limit(4);
+    return data || [];
+  } catch {
+    return [];
+  }
 }
 
 export default async function Home() {

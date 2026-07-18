@@ -384,7 +384,7 @@ export default function ServicosAdminPage() {
 
       {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="border-white/[0.06] bg-[#0f0f0f] max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-white">Editar Serviço</DialogTitle>
           </DialogHeader>
@@ -532,7 +532,7 @@ export default function ServicosAdminPage() {
 
       {/* Delete Confirmation */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent className="border-white/[0.06] bg-[#0f0f0f]">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">Excluir Serviço</AlertDialogTitle>
             <AlertDialogDescription className="text-white/70">

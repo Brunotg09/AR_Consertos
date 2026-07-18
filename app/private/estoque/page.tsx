@@ -397,7 +397,7 @@ export default function EstoquePage() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto border-white/[0.06] bg-[#0f0f0f]">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-white">
               {selectedProduct ? "Editar Produto" : "Novo Produto"}
@@ -570,7 +570,7 @@ export default function EstoquePage() {
 
       {/* Delete Confirmation */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent className="border-white/[0.06] bg-[#0f0f0f]">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">Excluir Produto</AlertDialogTitle>
             <AlertDialogDescription className="text-white/70">

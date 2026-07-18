@@ -1,48 +1,28 @@
 "use client";
 
 import { supabase } from "@/lib/supabase";
-import { ArrowRight, Award, Cpu, Wrench } from "lucide-react";
+import { Award, Cpu, Wrench, Zap, Settings, ArrowRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+
+const iconMap: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
+  Wrench,
+  Cpu,
+  Award,
+  Zap,
+  Settings,
+};
 
 interface Banner {
   id: number;
   title: string | null;
   subtitle: string | null;
-  image_url: string;
+  image_url: string | null;
   link: string | null;
   sort_order: number;
+  accent_color: string;
+  cta_label: string;
+  icon_name: string | null;
 }
-
-// Default slides for fallback
-const defaultSlides = [
-  {
-    id: "default-1",
-    title: "CONSERTO DE ELETRODOMÉSTICOS",
-    subtitle: "Linha branca, pequenos eletrodomésticos e climatização",
-    cta: "Ver Serviços",
-    link: "/servicos",
-    accent: "#E30613",
-    icon: Wrench,
-  },
-  {
-    id: "default-2",
-    title: "ELETRÔNICA AVANÇADA INVERTER",
-    subtitle: "Reparo de placas de ar-condicionado inverter, inversores solares e fontes chaveadas",
-    cta: "Ver Inverter",
-    link: "/inverter",
-    accent: "#8B5CF6",
-    icon: Cpu,
-  },
-  {
-    id: "default-3",
-    title: "GARANTIA DE 90 DIAS",
-    subtitle: "Confiança e qualidade em cada reparo. Atendimento em Itabaiana/SE desde 2017.",
-    cta: "Fale Conosco",
-    link: "/contato",
-    accent: "#C9A84C",
-    icon: Award,
-  },
-];
 
 export function HeroCarousel() {
   const [current, setCurrent] = useState(0);
@@ -74,8 +54,8 @@ export function HeroCarousel() {
   }, [fetchBanners]);
 
   const next = useCallback(() => {
-    const totalSlides = banners.length > 0 ? banners.length : defaultSlides.length;
-    setCurrent((p) => (p + 1) % totalSlides);
+    if (banners.length === 0) return;
+    setCurrent((p) => (p + 1) % banners.length);
   }, [banners.length]);
 
   useEffect(() => {
@@ -83,9 +63,12 @@ export function HeroCarousel() {
     return () => clearInterval(timer);
   }, [next]);
 
-  // Use banners if available, otherwise use defaults
-  const slides = banners.length > 0 ? banners : defaultSlides;
-  const accent = banners.length > 0 ? "#E30613" : (slides[current] as { accent?: string }).accent || "#E30613";
+  if (banners.length === 0) {
+    return null;
+  }
+
+  const currentBanner = banners[current];
+  const accent = currentBanner?.accent_color || "#E30613";
 
   return (
     <section className="relative overflow-hidden" style={{ backgroundColor: "#141414", isolation: "isolate" }}>
@@ -98,40 +81,36 @@ export function HeroCarousel() {
       />
 
       <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-12 lg:px-8 lg:py-16">
-        <div className="relative h-80 sm:h-96 lg:h-[28rem]">
-          {slides.map((slide, index) => {
+        <div className="relative h-80 sm:96 lg:h-[28rem]">
+          {banners.map((banner, index) => {
             const isActive = index === current;
-            const isDefaultSlide = "icon" in slide;
-            const Icon = isDefaultSlide ? (slide as typeof defaultSlides[0]).icon : Wrench;
-            const title = slide.title || "";
-            const subtitle = slide.subtitle || "";
-            const link = isDefaultSlide ? (slide as typeof defaultSlides[0]).link : (slide as Banner).link || "/servicos";
-            const slideAccent = isDefaultSlide ? (slide as typeof defaultSlides[0]).accent : "#E30613";
-            const imageUrl = !isDefaultSlide ? (slide as Banner).image_url : null;
+            const slideAccent = banner.accent_color || "#E30613";
+            const Icon = banner.icon_name ? iconMap[banner.icon_name] || Wrench : Wrench;
+            const hasImage = !!banner.image_url;
 
             return (
               <div
-                key={slide.id}
+                key={banner.id}
                 className={`absolute inset-0 flex flex-col items-center justify-center rounded-2xl border px-8 text-center transition-all duration-700 ease-out ${
                   isActive
                     ? "opacity-100 translate-x-0"
                     : "opacity-0 translate-x-10 pointer-events-none"
                 }`}
                 style={{
-                  background: imageUrl
-                    ? `linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0.1) 100%), url(${imageUrl})`
+                  background: hasImage
+                    ? `linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0.1) 100%), url(${banner.image_url})`
                     : "rgba(26, 26, 26, 0.6)",
                   backgroundSize: "cover",
                   backgroundPosition: "center",
-                  backdropFilter: imageUrl ? "none" : "blur(20px) saturate(140%)",
-                  WebkitBackdropFilter: imageUrl ? "none" : "blur(20px) saturate(140%)",
+                  backdropFilter: hasImage ? "none" : "blur(20px) saturate(140%)",
+                  WebkitBackdropFilter: hasImage ? "none" : "blur(20px) saturate(140%)",
                   borderColor: `${slideAccent}20`,
                   boxShadow: isActive
                     ? `0 0 60px ${slideAccent}10, 0 8px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)`
                     : "none",
                 }}
               >
-                {!imageUrl && (
+                {!hasImage && (
                   <div
                     className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl transition-transform duration-500"
                     style={{
@@ -144,35 +123,36 @@ export function HeroCarousel() {
                   </div>
                 )}
                 <h2 className="font-bebas text-4xl tracking-widest text-white sm:text-5xl lg:text-6xl drop-shadow-lg">
-                  {title}
+                  {banner.title || ""}
                 </h2>
                 <p className="mt-4 max-w-lg text-sm leading-relaxed sm:text-base drop-shadow-md" style={{ color: "#d0d0d0" }}>
-                  {subtitle}
+                  {banner.subtitle || ""}
                 </p>
-                <a
-                  href={link}
-                  className="mt-8 inline-flex items-center gap-2 rounded-xl px-8 py-3.5 text-sm font-bold text-white transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.03]"
-                  style={{
-                    background: `linear-gradient(135deg, ${slideAccent} 0%, ${slideAccent}dd 100%)`,
-                    boxShadow: `0 6px 20px ${slideAccent}40, 0 1px 2px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.15)`,
-                  }}
-                >
-                  {isDefaultSlide ? (slide as typeof defaultSlides[0]).cta : "Saiba Mais"}
-                  <ArrowRight className="h-4 w-4" />
-                </a>
+                {banner.link && (
+                  <a
+                    href={banner.link}
+                    className="mt-8 inline-flex items-center gap-2 rounded-xl px-8 py-3.5 text-sm font-bold text-white transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.03]"
+                    style={{
+                      background: `linear-gradient(135deg, ${slideAccent} 0%, ${slideAccent}dd 100%)`,
+                      boxShadow: `0 6px 20px ${slideAccent}40, 0 1px 2px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.15)`,
+                    }}
+                  >
+                    {banner.cta_label || "Saiba Mais"}
+                    <ArrowRight className="h-4 w-4" />
+                  </a>
+                )}
               </div>
             );
           })}
-
         </div>
 
         {/* Indicators */}
         <div className="mt-8 flex justify-center gap-2">
-          {slides.map((s, index) => {
-            const slideAccent = "accent" in s ? s.accent : "#E30613";
+          {banners.map((banner, index) => {
+            const slideAccent = banner.accent_color || "#E30613";
             return (
               <button
-                key={s.id}
+                key={banner.id}
                 onClick={() => setCurrent(index)}
                 className="h-1.5 rounded-full transition-all duration-500"
                 style={{

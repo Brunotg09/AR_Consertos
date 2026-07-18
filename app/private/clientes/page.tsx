@@ -438,7 +438,7 @@ export default function ClientesPage() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto border-white/[0.06] bg-[#0f0f0f]">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-white">
               {selectedCliente ? "Editar Cliente" : "Novo Cliente"}
@@ -641,7 +641,7 @@ export default function ClientesPage() {
 
       {/* Link Profile Dialog */}
       <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
-        <DialogContent className="border-white/[0.06] bg-[#0f0f0f]">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-white">Vincular Conta</DialogTitle>
           </DialogHeader>
@@ -691,12 +691,20 @@ export default function ClientesPage() {
               </div>
             )}
           </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline"
+              onClick={() => setLinkDialogOpen(false)}
+              className="rounded-xl border-white/10 text-white/70">
+              Cancelar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Delete Confirmation */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent className="border-white/[0.06] bg-[#0f0f0f]">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">Excluir Cliente</AlertDialogTitle>
             <AlertDialogDescription className="text-white/70">
