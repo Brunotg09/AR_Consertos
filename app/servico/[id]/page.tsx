@@ -78,7 +78,7 @@ export default function ServicoDetailPage() {
   const images =
     service.images && service.images.length > 0
       ? service.images
-      : Array.from({ length: 3 }, (_, i) => `/images/services/${service.service_id}/${i + 1}.jpg`);
+      : [];
 
   const handleAddService = () => {
     addService({
@@ -145,22 +145,26 @@ export default function ServicoDetailPage() {
         {/* Galeria */}
         <div className="mt-8">
           <h3 className="font-montserrat text-sm font-bold text-white">Galeria</h3>
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {images.map((img, idx) => (
-              <div
-                key={idx}
-                className="flex aspect-video items-center justify-center overflow-hidden rounded-lg border border-white/10"
-                style={{ backgroundColor: "#222222" }}
-              >
-                <img
-                  src={img}
-                  alt={`${service.name} ${idx + 1}`}
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                />
-              </div>
-            ))}
-          </div>
+          {images.length > 0 ? (
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {images.map((img, idx) => (
+                <div
+                  key={idx}
+                  className="flex aspect-video items-center justify-center overflow-hidden rounded-lg border border-white/10"
+                  style={{ backgroundColor: "#222222" }}
+                >
+                  <img
+                    src={img}
+                    alt={`${service.name} ${idx + 1}`}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-white/40">Nenhuma imagem cadastrada.</p>
+          )}
         </div>
 
         {/* Info extras */}

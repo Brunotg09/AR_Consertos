@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import {
   Search,
   Eye,
@@ -10,13 +10,15 @@ import {
   Edit,
   X,
   Save,
-  Plus,
   Trash2,
   Loader2,
   DollarSign,
   Tag,
+  Upload,
+  Image as ImageIcon,
 } from "lucide-react";
 import { useServices, ServiceItem } from "@/hooks/useServices";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,6 +58,9 @@ export default function ServicosAdminPage() {
     badge_garantia: "",
   });
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [images, setImages] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredServices = services.filter((service) => {
     const matchesType = typeFilter === "all" || service.type === typeFilter;
@@ -75,7 +80,55 @@ export default function ServicosAdminPage() {
       discount_percentage: service.discount_percentage?.toString() || "0",
       badge_garantia: service.badge_garantia || "GARANTIA 90 DIAS",
     });
+    setImages(service.images || []);
     setEditDialogOpen(true);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !selectedService) return;
+
+    setUploading(true);
+    const newImages = [...images];
+
+    for (const file of Array.from(files)) {
+      const fileExt = file.name.split(".").pop();
+      const filePath = `${selectedService.service_id}/${Date.now()}.${fileExt}`;
+
+      const { error } = await supabase.storage
+        .from("service-images")
+        .upload(filePath, file, { upsert: true });
+
+      if (error) {
+        toast.error("Erro ao upload: " + error.message);
+      } else {
+        const { data } = supabase.storage
+          .from("service-images")
+          .getPublicUrl(filePath);
+        newImages.push(data.publicUrl);
+      }
+    }
+
+    setImages(newImages);
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeImage = async (index: number) => {
+    if (!selectedService) return;
+    const imageUrl = images[index];
+
+    // Try to extract path from URL and delete from storage
+    if (imageUrl.includes("service-images")) {
+      const urlParts = imageUrl.split("service-images/");
+      if (urlParts.length > 1) {
+        const filePath = urlParts[1].split("?")[0];
+        await supabase.storage.from("service-images").remove([filePath]);
+      }
+    }
+
+    const newImages = images.filter((_, i) => i !== index);
+    setImages(newImages);
   };
 
   const handleSaveEdit = async () => {
@@ -89,6 +142,7 @@ export default function ServicosAdminPage() {
       price: editForm.price ? parseFloat(editForm.price) : null,
       discount_percentage: parseInt(editForm.discount_percentage) || 0,
       badge_garantia: editForm.badge_garantia,
+      images: images,
     });
 
     if (error) {
@@ -224,40 +278,39 @@ export default function ServicosAdminPage() {
                 !service.active ? "border-red-500/20 opacity-60" : "border-white/[0.06]"
               } bg-[#0f0f0f]`}
             >
-              {/* Type Badge */}
-              <div className="absolute right-2 top-2 z-10 flex gap-2">
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    service.type === "inverter"
-                      ? "bg-[#8B5CF6]/20 text-[#8B5CF6]"
-                      : "bg-[#E30613]/20 text-[#E30613]"
-                  }`}
-                >
-                  {service.type}
-                </span>
-                {!service.active && (
-                  <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-400">
-                    Inativo
-                  </span>
+              {/* Image Preview */}
+              <div className="relative h-40 w-full overflow-hidden bg-white/[0.02]">
+                {service.images && service.images.length > 0 ? (
+                  <img
+                    src={service.images[0]}
+                    alt={service.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <ImageIcon className="h-12 w-12 text-white/20" />
+                  </div>
                 )}
+                {/* Type Badge */}
+                <div className="absolute right-2 top-2 z-10 flex gap-2">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      service.type === "inverter"
+                        ? "bg-[#8B5CF6]/20 text-[#8B5CF6]"
+                        : "bg-[#E30613]/20 text-[#E30613]"
+                    }`}
+                  >
+                    {service.type}
+                  </span>
+                  {!service.active && (
+                    <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-400">
+                      Inativo
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="p-4">
-                {/* Icon */}
-                <div
-                  className={`mb-3 flex h-12 w-12 items-center justify-center rounded-xl ${
-                    service.type === "inverter"
-                      ? "bg-[#8B5CF6]/10"
-                      : "bg-[#E30613]/10"
-                  }`}
-                >
-                  {service.type === "inverter" ? (
-                    <Cpu className="h-6 w-6 text-[#8B5CF6]" />
-                  ) : (
-                    <Wrench className="h-6 w-6 text-[#E30613]" />
-                  )}
-                </div>
-
                 {/* Content */}
                 <h3 className="font-montserrat text-sm font-bold text-white">
                   {service.name}
@@ -331,7 +384,7 @@ export default function ServicosAdminPage() {
 
       {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="border-white/[0.06] bg-[#0f0f0f] max-w-2xl">
+        <DialogContent className="border-white/[0.06] bg-[#0f0f0f] max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-white">Editar Serviço</DialogTitle>
           </DialogHeader>
@@ -351,6 +404,42 @@ export default function ServicosAdminPage() {
                   </span>
                   <span className="text-xs text-white/50">{selectedService.service_id}</span>
                 </div>
+              </div>
+
+              {/* Images Section */}
+              <div className="space-y-2">
+                <Label className="text-white/70">Imagens do Serviço</Label>
+                <div className="grid grid-cols-4 gap-2">
+                  {images.map((img, idx) => (
+                    <div key={idx} className="group relative aspect-square overflow-hidden rounded-lg border border-white/10">
+                      <img src={img} alt={`Imagem ${idx + 1}`} className="h-full w-full object-cover" />
+                      <button
+                        onClick={() => removeImage(idx)}
+                        className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border border-dashed border-white/20 bg-white/[0.02] transition-colors hover:bg-white/[0.04]">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleImageUpload}
+                      className="hidden"
+                    />
+                    {uploading ? (
+                      <Loader2 className="h-6 w-6 animate-spin text-white/50" />
+                    ) : (
+                      <Upload className="h-6 w-6 text-white/30" />
+                    )}
+                  </label>
+                </div>
+                <p className="text-[10px] text-white/40">
+                  Formatos: JPG, PNG, WebP. Tamanho máximo: 5MB por imagem.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

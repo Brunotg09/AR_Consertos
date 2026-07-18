@@ -3,9 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ServiceIcon } from "./ServiceIcon";
-import { getServiceImages } from "@/data/serviceImages";
 import { useCart } from "@/contexts/CartContext";
-import { CalendarCheck, ArrowUpRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarCheck, ArrowUpRight, ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
 
 interface ServiceCardProps {
   service: {
@@ -30,17 +29,22 @@ export function ServiceCard({ service, variant }: ServiceCardProps) {
   const isInverter = type === "inverter";
   const accent = isInverter ? "#8B5CF6" : "#E30613";
 
-  // Use Supabase images if available, fallback to placeholders
-  const images =
-    service.images && service.images.length > 0
-      ? service.images
-      : getServiceImages(service.service_id, 1);
+  // Use only Supabase images
+  const images = service.images && service.images.length > 0
+    ? service.images
+    : [];
 
   const [currentImage, setCurrentImage] = useState(0);
   const { addService } = useCart();
 
-  const nextImage = () => setCurrentImage((p) => (p + 1) % images.length);
-  const prevImage = () => setCurrentImage((p) => (p - 1 + images.length) % images.length);
+  const nextImage = () => {
+    if (images.length === 0) return;
+    setCurrentImage((p) => (p + 1) % images.length);
+  };
+  const prevImage = () => {
+    if (images.length === 0) return;
+    setCurrentImage((p) => (p - 1 + images.length) % images.length);
+  };
 
   const handleSchedule = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -52,7 +56,7 @@ export function ServiceCard({ service, variant }: ServiceCardProps) {
       type: service.type,
       badgeGarantia: service.badge_garantia,
       imagesFolder: "",
-      totalImages: service.images?.length || 1,
+      totalImages: service.images?.length || 0,
       iconName: service.icon_name,
       discountPercentage: service.discount_percentage,
     });
@@ -86,16 +90,61 @@ export function ServiceCard({ service, variant }: ServiceCardProps) {
     >
       {/* Image carousel */}
       <div className="relative h-[180px] w-full overflow-hidden">
-        {images.map((img, idx) => (
-          <img
-            key={idx}
-            src={img}
-            alt={`${service.name} ${idx + 1}`}
-            className="absolute inset-0 h-full w-full object-cover transition-opacity duration-500"
-            style={{ opacity: idx === currentImage ? 1 : 0 }}
-            loading="lazy"
-          />
-        ))}
+        {images.length > 0 ? (
+          <>
+            {images.map((img, idx) => (
+              <img
+                key={idx}
+                src={img}
+                alt={`${service.name} ${idx + 1}`}
+                className="absolute inset-0 h-full w-full object-cover transition-opacity duration-500"
+                style={{ opacity: idx === currentImage ? 1 : 0 }}
+                loading="lazy"
+              />
+            ))}
+            {/* Arrows */}
+            {images.length > 1 && (
+              <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); prevImage(); }}
+                  className="absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-full p-1.5 opacity-0 transition-all duration-200 group-hover:opacity-100 hover:scale-110"
+                  style={{ backgroundColor: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", color: "white" }}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); nextImage(); }}
+                  className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-full p-1.5 opacity-0 transition-all duration-200 group-hover:opacity-100 hover:scale-110"
+                  style={{ backgroundColor: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", color: "white" }}
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
+            {/* Dots */}
+            {images.length > 1 && (
+              <div className="absolute bottom-3 right-3 flex gap-1">
+                {images.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={(e) => { e.stopPropagation(); setCurrentImage(idx); }}
+                    className="h-1.5 rounded-full transition-all duration-300"
+                    style={{
+                      width: idx === currentImage ? "1.25rem" : "0.375rem",
+                      backgroundColor: idx === currentImage ? accent : "rgba(255,255,255,0.3)",
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="flex h-full w-full items-center justify-center" style={{ backgroundColor: "rgba(255,255,255,0.03)" }}>
+            <ImageIcon className="h-12 w-12" style={{ color: "#444" }} />
+          </div>
+        )}
+
+        {/* Dark overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
         {/* Icon seal */}
@@ -113,43 +162,6 @@ export function ServiceCard({ service, variant }: ServiceCardProps) {
             style={{ color: accent }}
           />
         </div>
-
-        {/* Arrows */}
-        {images.length > 1 && (
-          <>
-            <button
-              onClick={(e) => { e.stopPropagation(); prevImage(); }}
-              className="absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-full p-1.5 opacity-0 transition-all duration-200 group-hover:opacity-100 hover:scale-110"
-              style={{ backgroundColor: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", color: "white" }}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); nextImage(); }}
-              className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-full p-1.5 opacity-0 transition-all duration-200 group-hover:opacity-100 hover:scale-110"
-              style={{ backgroundColor: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", color: "white" }}
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
-          </>
-        )}
-
-        {/* Dots */}
-        {images.length > 1 && (
-          <div className="absolute bottom-3 right-3 flex gap-1">
-            {images.map((_, idx) => (
-              <button
-                key={idx}
-                onClick={(e) => { e.stopPropagation(); setCurrentImage(idx); }}
-                className="h-1.5 rounded-full transition-all duration-300"
-                style={{
-                  width: idx === currentImage ? "1.25rem" : "0.375rem",
-                  backgroundColor: idx === currentImage ? accent : "rgba(255,255,255,0.3)",
-                }}
-              />
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Content */}
