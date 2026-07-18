@@ -1,9 +1,17 @@
 import { HeroCarousel } from "@/components/HeroCarousel";
 import { ServiceCard } from "@/components/ServiceCard";
-import { servicesData } from "@/data/services";
 import { supabase } from "@/lib/supabase";
 import { ArrowRight, Cpu, ShoppingBag, Wrench } from "lucide-react";
 import Link from "next/link";
+
+async function getServices() {
+  const { data } = await supabase
+    .from("services")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order", { ascending: true });
+  return data || [];
+}
 
 async function getProducts() {
   const { data } = await supabase
@@ -16,9 +24,12 @@ async function getProducts() {
 }
 
 export default async function Home() {
-  const shuffle = (arr: typeof servicesData) => [...arr].sort(() => Math.random() - 0.5);
-  const convencionais = shuffle(servicesData.filter((s) => s.type === "convencional")).slice(0, 12);
-  const inverters = servicesData.filter((s) => s.type === "inverter");
+  const allServices = await getServices();
+  const convencionais = allServices
+    .filter((s) => s.type === "convencional")
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 12);
+  const inverters = allServices.filter((s) => s.type === "inverter");
   const products = await getProducts();
 
   return (
@@ -29,7 +40,6 @@ export default async function Home() {
       <section className="relative overflow-hidden">
         <div className="section-glow-red" />
         <div className="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8 lg:py-32">
-          {/* Section header */}
           <div className="max-w-2xl">
             <div className="flex items-center gap-3">
               <div className="h-px w-10 rounded" style={{ backgroundColor: "#E30613" }} />
@@ -45,19 +55,14 @@ export default async function Home() {
             </p>
           </div>
 
-          {/* Grid */}
-          <div className="mt-16 grid grid-cols-1 gap-5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="mt-16 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {convencionais.map((service) => (
               <ServiceCard key={service.id} service={service} />
             ))}
           </div>
 
-          {/* CTA */}
           <div className="mt-16 text-center">
-            <Link
-              href="/servicos"
-              className="btn-premium-red inline-flex items-center gap-2"
-            >
+            <Link href="/servicos" className="btn-premium-red inline-flex items-center gap-2">
               Ver Todos os Serviços
               <ArrowRight className="h-4 w-4" />
             </Link>
@@ -68,17 +73,11 @@ export default async function Home() {
       {/* Seção REPARO DE ELETRÔNICA INVERTER */}
       <section className="relative overflow-hidden" style={{ backgroundColor: "#141414" }}>
         <div className="section-glow-purple" />
-
-        {/* Ambient glow */}
         <div
           className="pointer-events-none absolute left-1/2 top-0 h-[500px] w-[800px] -translate-x-1/2 opacity-20"
-          style={{
-            background: "radial-gradient(ellipse 50% 40% at 50% 0%, #8B5CF6 0%, transparent 70%)",
-          }}
+          style={{ background: "radial-gradient(ellipse 50% 40% at 50% 0%, #8B5CF6 0%, transparent 70%)" }}
         />
-
         <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8 lg:py-32">
-          {/* Section header */}
           <div className="max-w-2xl">
             <div className="flex items-center gap-3">
               <div className="h-px w-10 rounded" style={{ backgroundColor: "#8B5CF6" }} />
@@ -94,7 +93,6 @@ export default async function Home() {
             </p>
           </div>
 
-          {/* Feature pills */}
           <div className="mt-10 flex flex-wrap gap-3">
             <div className="flex items-center gap-2 rounded-full border px-4 py-2 text-xs" style={{ borderColor: "rgba(139, 92, 246, 0.2)", color: "#a78bfa", backgroundColor: "rgba(139, 92, 246, 0.06)" }}>
               <Cpu className="h-3.5 w-3.5" />
@@ -106,19 +104,14 @@ export default async function Home() {
             </div>
           </div>
 
-          {/* Grid */}
           <div className="mt-16 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {inverters.map((service) => (
               <ServiceCard key={service.id} service={service} variant="inverter" />
             ))}
           </div>
 
-          {/* CTA */}
           <div className="mt-16 text-center">
-            <Link
-              href="/inverter"
-              className="btn-premium-purple inline-flex items-center gap-2"
-            >
+            <Link href="/inverter" className="btn-premium-purple inline-flex items-center gap-2">
               Ver Todos Inverter
               <ArrowRight className="h-4 w-4" />
             </Link>
@@ -205,7 +198,7 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Stats / trust strip */}
+      {/* Stats */}
       <section className="border-t border-white/5" style={{ backgroundColor: "#161616" }}>
         <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 gap-8 md:grid-cols-4">

@@ -1,22 +1,30 @@
 "use client";
 
 import { ServiceCard } from "@/components/ServiceCard";
-import { servicesData } from "@/data/services";
-import { Filter } from "lucide-react";
+import { useServices } from "@/hooks/useServices";
+import { Filter, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
 export default function ServicosPage() {
-  const convencionais = servicesData.filter((s) => s.type === "convencional");
+  const { services, loading } = useServices({ activeOnly: true, type: "convencional" });
   const categorias = useMemo(
-    () => Array.from(new Set(convencionais.map((s) => s.category))),
-    [convencionais]
+    () => Array.from(new Set(services.map((s) => s.category))),
+    [services]
   );
   const [categoriaAtiva, setCategoriaAtiva] = useState<string>("Todas");
 
   const filtrados =
     categoriaAtiva === "Todas"
-      ? convencionais
-      : convencionais.filter((s) => s.category === categoriaAtiva);
+      ? services
+      : services.filter((s) => s.category === categoriaAtiva);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-white/50" />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
@@ -43,11 +51,7 @@ export default function ServicosPage() {
               ? "text-white"
               : "border border-white/10 text-white/70 hover:bg-white/5"
           }`}
-          style={
-            categoriaAtiva === "Todas"
-              ? { backgroundColor: "#E30613" }
-              : undefined
-          }
+          style={categoriaAtiva === "Todas" ? { backgroundColor: "#E30613" } : undefined}
         >
           Todas
         </button>
@@ -60,11 +64,7 @@ export default function ServicosPage() {
                 ? "text-white"
                 : "border border-white/10 text-white/70 hover:bg-white/5"
             }`}
-            style={
-              categoriaAtiva === cat
-                ? { backgroundColor: "#E30613" }
-                : undefined
-            }
+            style={categoriaAtiva === cat ? { backgroundColor: "#E30613" } : undefined}
           >
             {cat}
           </button>

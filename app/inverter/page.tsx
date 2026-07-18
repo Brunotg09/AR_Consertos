@@ -1,25 +1,27 @@
 "use client";
 
 import { ServiceCard } from "@/components/ServiceCard";
-import { servicesData } from "@/data/services";
-import { Cpu, Zap, Microscope } from "lucide-react";
+import { useServices } from "@/hooks/useServices";
+import { Cpu, Zap, Microscope, Loader2 } from "lucide-react";
 
 export default function InverterPage() {
-  const inverters = servicesData.filter((s) => s.type === "inverter");
+  const { services, loading } = useServices({ activeOnly: true, type: "inverter" });
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-white/50" />
+      </div>
+    );
+  }
 
   return (
     <div>
       {/* Hero inverter */}
-      <section
-        className="border-b border-white/5"
-        style={{ backgroundColor: "#161616" }}
-      >
+      <section className="border-b border-white/5" style={{ backgroundColor: "#161616" }}>
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center text-center">
-            <div
-              className="flex h-16 w-16 items-center justify-center rounded-full"
-              style={{ backgroundColor: "#8B5CF620" }}
-            >
+            <div className="flex h-16 w-16 items-center justify-center rounded-full" style={{ backgroundColor: "#8B5CF620" }}>
               <Cpu className="h-8 w-8" style={{ color: "#8B5CF6" }} />
             </div>
             <h1 className="mt-4 font-bebas text-3xl tracking-wide text-white sm:text-5xl">
@@ -52,7 +54,7 @@ export default function InverterPage() {
       {/* Grid */}
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {inverters.map((service) => (
+          {services.map((service) => (
             <ServiceCard key={service.id} service={service} variant="inverter" />
           ))}
         </div>

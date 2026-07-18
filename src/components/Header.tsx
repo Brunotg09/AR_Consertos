@@ -1,9 +1,9 @@
 "use client";
 
 import { useCart } from "@/contexts/CartContext";
-import { servicesData } from "@/data/services";
 import { useAdmin } from "@/hooks/useAdmin";
 import { useAuth } from "@/hooks/useAuth";
+import { useServices } from "@/hooks/useServices";
 import {
   Award,
   Banknote,
@@ -419,16 +419,18 @@ export function Header() {
 }
 
 function SearchOverlay({ query, setQuery, onClose }: { query: string; setQuery: (v: string) => void; onClose: () => void }) {
+  const { services } = useServices({ activeOnly: true });
+
   const results = useMemo(() => {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
-    return servicesData.filter(
+    return services.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
-        s.description.toLowerCase().includes(q) ||
-        s.category.toLowerCase().includes(q)
+        s.description?.toLowerCase().includes(q) ||
+        s.category?.toLowerCase().includes(q)
     );
-  }, [query]);
+  }, [query, services]);
 
   return (
     <>
@@ -488,7 +490,7 @@ function SearchOverlay({ query, setQuery, onClose }: { query: string; setQuery: 
                 {results.slice(0, 6).map((service) => (
                   <Link
                     key={service.id}
-                    href={`/servico/${service.id}`}
+                    href={`/servico/${service.service_id}`}
                     onClick={onClose}
                     className="flex items-center gap-3 rounded-xl p-3 text-left transition-all hover:bg-white/[0.04]"
                   >

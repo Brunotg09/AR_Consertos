@@ -57,7 +57,7 @@ import {
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { servicesData } from "@/data/services";
+import { useServices } from "@/hooks/useServices";
 import { generateOSPDF } from "@/lib/generateOSPDF";
 
 // Types
@@ -173,6 +173,9 @@ export default function PedidosPage() {
 
   const [saving, setSaving] = useState(false);
 
+  // Services from Supabase
+  const { services: servicesData } = useServices({ activeOnly: true });
+
   // Payment form
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
@@ -256,7 +259,7 @@ export default function PedidosPage() {
 
   const filteredServices = servicesData.filter((s) =>
     s.name.toLowerCase().includes(serviceSearch.toLowerCase()) ||
-    s.category.toLowerCase().includes(serviceSearch.toLowerCase())
+    s.category?.toLowerCase().includes(serviceSearch.toLowerCase())
   );
 
   const filteredProducts = products.filter((p) =>
@@ -363,11 +366,11 @@ export default function PedidosPage() {
       ...orderItems,
       {
         type: "servico",
-        id: service.id,
+        id: service.service_id,
         name: service.name,
         serviceType: service.type,
         quantity: 1,
-        price: null,
+        price: service.price || null,
       },
     ]);
     setServiceSearch("");

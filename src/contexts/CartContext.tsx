@@ -1,12 +1,22 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { ServiceItem } from "@/data/services";
 
 export interface CartServiceItem {
   id: string;
   type: "service";
-  service: ServiceItem;
+  service: {
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+    type: "convencional" | "inverter";
+    badgeGarantia: string;
+    imagesFolder: string;
+    totalImages: number;
+    iconName: string;
+    discountPercentage: number;
+  };
 }
 
 export interface CartProductItem {
@@ -25,7 +35,7 @@ export type CartItem = CartServiceItem | CartProductItem;
 
 interface CartContextValue {
   items: CartItem[];
-  addService: (service: ServiceItem) => void;
+  addService: (service: CartServiceItem["service"]) => void;
   addProduct: (product: {
     id: number;
     name: string;
@@ -67,7 +77,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [items, hydrated]);
 
-  const addService = useCallback((service: ServiceItem) => {
+  const addService = useCallback((service: CartServiceItem["service"]) => {
     setItems((prev) => {
       const exists = prev.find(
         (i) => i.type === "service" && i.service.id === service.id

@@ -1,26 +1,35 @@
 "use client";
 
-import { useState, useMemo, useEffect, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { servicesData } from "@/data/services";
+import { useServices } from "@/hooks/useServices";
 import { ServiceCard } from "@/components/ServiceCard";
-import { Search, X, ArrowRight } from "lucide-react";
+import { Search, X, ArrowRight, Loader2 } from "lucide-react";
 
 function BuscaContent() {
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") || "");
+  const { services, loading } = useServices({ activeOnly: true });
 
   const serviceResults = useMemo(() => {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
-    return servicesData.filter(
+    return services.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
-        s.description.toLowerCase().includes(q) ||
-        s.category.toLowerCase().includes(q)
+        s.description?.toLowerCase().includes(q) ||
+        s.category?.toLowerCase().includes(q)
     );
-  }, [query]);
+  }, [query, services]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-white/50" />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">

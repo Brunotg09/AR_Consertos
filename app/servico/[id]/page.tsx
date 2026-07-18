@@ -2,22 +2,56 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { servicesData } from "@/data/services";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { ServiceIcon } from "@/components/ServiceIcon";
 import { useCart } from "@/contexts/CartContext";
-import {
-  CalendarCheck,
-  ArrowLeft,
-  Tag,
-  Award,
-  Image as ImageIcon,
-} from "lucide-react";
+import { CalendarCheck, ArrowLeft, Tag, Award, Image as ImageIcon, Loader2 } from "lucide-react";
+
+interface ServiceData {
+  id: number;
+  service_id: string;
+  name: string;
+  description: string;
+  category: string;
+  type: "convencional" | "inverter";
+  price: number | null;
+  discount_percentage: number;
+  badge_garantia: string;
+  icon_name: string;
+  images: string[];
+}
 
 export default function ServicoDetailPage() {
   const params = useParams();
   const id = params?.id as string;
   const { addService } = useCart();
-  const service = servicesData.find((s) => s.id === id);
+  const [service, setService] = useState<ServiceData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchService() {
+      const { data } = await supabase
+        .from("services")
+        .select("*")
+        .eq("service_id", id)
+        .eq("active", true)
+        .single();
+
+      setService(data);
+      setLoading(false);
+    }
+
+    if (id) fetchService();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-white/50" />
+      </div>
+    );
+  }
 
   if (!service) {
     return (
@@ -41,8 +75,25 @@ export default function ServicoDetailPage() {
   const isInverter = service.type === "inverter";
   const accent = isInverter ? "#8B5CF6" : "#E30613";
 
-  // Simula galeria de imagens (placeholder)
-  const imageSlots = Array.from({ length: service.totalImages }, (_, i) => i + 1);
+  const images =
+    service.images && service.images.length > 0
+      ? service.images
+      : Array.from({ length: 3 }, (_, i) => `/images/services/${service.service_id}/${i + 1}.jpg`);
+
+  const handleAddService = () => {
+    addService({
+      id: service.service_id,
+      name: service.name,
+      description: service.description,
+      category: service.category,
+      type: service.type,
+      badgeGarantia: service.badge_garantia,
+      imagesFolder: "",
+      totalImages: service.images?.length || 1,
+      iconName: service.icon_name,
+      discountPercentage: service.discount_percentage,
+    });
+  };
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
@@ -63,18 +114,14 @@ export default function ServicoDetailPage() {
               className="flex h-14 w-14 items-center justify-center rounded-xl"
               style={{ backgroundColor: `${accent}20` }}
             >
-              <ServiceIcon
-                iconName={service.iconName}
-                className="h-7 w-7"
-                style={{ color: accent }}
-              />
+              <ServiceIcon iconName={service.icon_name} className="h-7 w-7" style={{ color: accent }} />
             </div>
             <div>
               <span
                 className="inline-block rounded px-2 py-0.5 font-oswald text-[10px] tracking-wider text-white"
                 style={{ backgroundColor: accent }}
               >
-                {service.badgeGarantia}
+                {service.badge_garantia}
               </span>
               <h1 className="mt-1 font-bebas text-2xl tracking-wide text-white sm:text-3xl">
                 {service.name}
@@ -95,22 +142,22 @@ export default function ServicoDetailPage() {
           {service.description}
         </p>
 
-        {/* Galeria de ícones (placeholder) */}
+        {/* Galeria */}
         <div className="mt-8">
-          <h3 className="font-montserrat text-sm font-bold text-white">
-            Galeria
-          </h3>
+          <h3 className="font-montserrat text-sm font-bold text-white">Galeria</h3>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {imageSlots.map((slot) => (
+            {images.map((img, idx) => (
               <div
-                key={slot}
-                className="flex aspect-video items-center justify-center rounded-lg border border-white/10"
+                key={idx}
+                className="flex aspect-video items-center justify-center overflow-hidden rounded-lg border border-white/10"
                 style={{ backgroundColor: "#222222" }}
               >
-                <div className="flex flex-col items-center gap-2" style={{ color: "#555555" }}>
-                  <ImageIcon className="h-8 w-8" />
-                  <span className="text-[10px]">Imagem {slot}</span>
-                </div>
+                <img
+                  src={img}
+                  alt={`${service.name} ${idx + 1}`}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
               </div>
             ))}
           </div>
@@ -122,10 +169,15 @@ export default function ServicoDetailPage() {
             <Award className="h-3.5 w-3.5" style={{ color: "#C9A84C" }} />
             <span>Garantia de 90 dias</span>
           </div>
-          {service.discountPercentage > 0 && (
+          {service.discount_percentage > 0 && (
             <div className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-xs" style={{ color: "#C9A84C" }}>
               <Tag className="h-3.5 w-3.5" />
-              <span>Até {service.discountPercentage}% OFF no agendamento</span>
+              <span>Até {service.discount_percentage}% OFF no agendamento</span>
+            </div>
+          )}
+          {service.price && (
+            <div className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-xs" style={{ color: "#4ade80" }}>
+              <span className="font-bold">R$ {service.price.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
             </div>
           )}
         </div>
@@ -133,7 +185,7 @@ export default function ServicoDetailPage() {
         {/* CTA */}
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <button
-            onClick={() => addService(service)}
+            onClick={handleAddService}
             className="flex flex-1 items-center justify-center gap-2 rounded-md py-3 text-sm font-bold text-white transition-opacity hover:opacity-90"
             style={{ backgroundColor: accent }}
           >

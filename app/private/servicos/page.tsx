@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   Search,
   Eye,
@@ -10,8 +10,13 @@ import {
   Edit,
   X,
   Save,
+  Plus,
+  Trash2,
+  Loader2,
+  DollarSign,
+  Tag,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { useServices, ServiceItem } from "@/hooks/useServices";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,50 +39,25 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { servicesData, ServiceItem } from "@/data/services";
-
-interface HiddenService {
-  id: number;
-  service_id: string;
-  hidden_at: string;
-}
 
 export default function ServicosAdminPage() {
-  const [hiddenServices, setHiddenServices] = useState<HiddenService[]>([]);
+  const { services, loading, updateService, deleteService } = useServices({ activeOnly: false });
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "convencional" | "inverter">("all");
-  const [loading, setLoading] = useState(true);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [hideDialogOpen, setHideDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    description: "",
+    category: "",
+    price: "",
+    discount_percentage: "",
+    badge_garantia: "",
+  });
+  const [saving, setSaving] = useState(false);
 
-  // Local edits (simulated with state - would need a services table for persistence)
-  const [localEdits, setLocalEdits] = useState<Record<string, { description?: string; price?: string }>>({});
-
-  const fetchHiddenServices = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from("hidden_services")
-        .select("*");
-
-      if (error) throw error;
-      setHiddenServices(data || []);
-    } catch (error) {
-      console.error("Error fetching hidden services:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchHiddenServices();
-  }, [fetchHiddenServices]);
-
-  const isServiceHidden = (serviceId: string) => {
-    return hiddenServices.some((h) => h.service_id === serviceId);
-  };
-
-  const filteredServices = servicesData.filter((service) => {
+  const filteredServices = services.filter((service) => {
     const matchesType = typeFilter === "all" || service.type === typeFilter;
     const matchesSearch =
       service.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -85,81 +65,81 @@ export default function ServicosAdminPage() {
     return matchesType && matchesSearch;
   });
 
-  const hideService = async (service: ServiceItem) => {
-    try {
-      const { error } = await supabase
-        .from("hidden_services")
-        .insert([{ service_id: service.id }]);
-
-      if (error) throw error;
-
-      setHiddenServices([...hiddenServices, { id: 0, service_id: service.id, hidden_at: new Date().toISOString() }]);
-      toast.success(`Serviço "${service.name}" ocultado`);
-      setHideDialogOpen(false);
-    } catch (error) {
-      console.error("Error hiding service:", error);
-      toast.error("Erro ao ocultar serviço");
-    }
-  };
-
-  const unhideService = async (serviceId: string) => {
-    try {
-      const { error } = await supabase
-        .from("hidden_services")
-        .delete()
-        .eq("service_id", serviceId);
-
-      if (error) throw error;
-
-      setHiddenServices(hiddenServices.filter((h) => h.service_id !== serviceId));
-      toast.success("Serviço reativado");
-    } catch (error) {
-      console.error("Error unhiding service:", error);
-      toast.error("Erro ao reativar serviço");
-    }
-  };
-
   const openEditDialog = (service: ServiceItem) => {
     setSelectedService(service);
-    setLocalEdits({
-      ...localEdits,
-      [service.id]: localEdits[service.id] || {
-        description: service.description,
-        price: "",
-      },
+    setEditForm({
+      name: service.name,
+      description: service.description || "",
+      category: service.category || "",
+      price: service.price?.toString() || "",
+      discount_percentage: service.discount_percentage?.toString() || "0",
+      badge_garantia: service.badge_garantia || "GARANTIA 90 DIAS",
     });
     setEditDialogOpen(true);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!selectedService) return;
+    setSaving(true);
 
-    // Save to local state (in a real app, this would save to a database)
-    toast.success(`Serviço "${selectedService.name}" atualizado localmente`);
-    setEditDialogOpen(false);
-  };
-
-  const saveLocalEdit = (field: "description" | "price", value: string) => {
-    if (!selectedService) return;
-    setLocalEdits({
-      ...localEdits,
-      [selectedService.id]: {
-        ...localEdits[selectedService.id],
-        [field]: value,
-      },
+    const { error } = await updateService(selectedService.id, {
+      name: editForm.name,
+      description: editForm.description,
+      category: editForm.category,
+      price: editForm.price ? parseFloat(editForm.price) : null,
+      discount_percentage: parseInt(editForm.discount_percentage) || 0,
+      badge_garantia: editForm.badge_garantia,
     });
+
+    if (error) {
+      toast.error("Erro ao salvar: " + error);
+    } else {
+      toast.success(`Serviço "${editForm.name}" atualizado com sucesso!`);
+      setEditDialogOpen(false);
+    }
+    setSaving(false);
   };
 
-  const getDisplayDescription = (service: ServiceItem) => {
-    return localEdits[service.id]?.description || service.description;
+  const handleDelete = async () => {
+    if (!selectedService) return;
+    setSaving(true);
+
+    const { error } = await deleteService(selectedService.id);
+
+    if (error) {
+      toast.error("Erro ao excluir: " + error);
+    } else {
+      toast.success(`Serviço "${selectedService.name}" excluído`);
+      setDeleteDialogOpen(false);
+    }
+    setSaving(false);
+  };
+
+  const toggleActive = async (service: ServiceItem) => {
+    const { error } = await updateService(service.id, { active: !service.active });
+    if (error) {
+      toast.error("Erro ao alterar status");
+    } else {
+      toast.success(service.active ? "Serviço desativado" : "Serviço ativado");
+    }
+  };
+
+  const stats = {
+    total: services.length,
+    convencional: services.filter((s) => s.type === "convencional").length,
+    inverter: services.filter((s) => s.type === "inverter").length,
+    active: services.filter((s) => s.active).length,
+    inactive: services.filter((s) => !s.active).length,
   };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="font-montserrat text-2xl font-bold text-white">Serviços</h1>
-        <p className="mt-1 text-sm text-white/50">Gerencie o catálogo de serviços</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="font-montserrat text-2xl font-bold text-white">Serviços</h1>
+          <p className="mt-1 text-sm text-white/50">Gerencie o catálogo de serviços</p>
+        </div>
       </div>
 
       {/* Filters */}
@@ -210,39 +190,42 @@ export default function ServicosAdminPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-4">
         <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4">
-          <p className="text-2xl font-bold text-white">{servicesData.length}</p>
-          <p className="text-sm text-white/50">Total de serviços</p>
+          <p className="text-2xl font-bold text-white">{stats.total}</p>
+          <p className="text-sm text-white/50">Total</p>
         </div>
         <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4">
-          <p className="text-2xl font-bold text-[#E30613]">
-            {servicesData.filter((s) => s.type === "convencional").length}
-          </p>
+          <p className="text-2xl font-bold text-[#E30613]">{stats.convencional}</p>
           <p className="text-sm text-white/50">Convencional</p>
         </div>
         <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4">
-          <p className="text-2xl font-bold text-[#8B5CF6]">
-            {servicesData.filter((s) => s.type === "inverter").length}
-          </p>
+          <p className="text-2xl font-bold text-[#8B5CF6]">{stats.inverter}</p>
           <p className="text-sm text-white/50">Inverter</p>
+        </div>
+        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4">
+          <p className="text-2xl font-bold text-green-400">{stats.active}</p>
+          <p className="text-sm text-white/50">Ativos</p>
         </div>
       </div>
 
-      {/* Services Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {filteredServices.map((service) => {
-          const isHidden = isServiceHidden(service.id);
-
-          return (
+      {/* Loading */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-white/50" />
+        </div>
+      ) : (
+        /* Services Grid */
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredServices.map((service) => (
             <div
               key={service.id}
               className={`group relative overflow-hidden rounded-xl border ${
-                isHidden ? "border-red-500/20 opacity-60" : "border-white/[0.06]"
+                !service.active ? "border-red-500/20 opacity-60" : "border-white/[0.06]"
               } bg-[#0f0f0f]`}
             >
               {/* Type Badge */}
-              <div className="absolute right-2 top-2 z-10">
+              <div className="absolute right-2 top-2 z-10 flex gap-2">
                 <span
                   className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                     service.type === "inverter"
@@ -252,6 +235,11 @@ export default function ServicosAdminPage() {
                 >
                   {service.type}
                 </span>
+                {!service.active && (
+                  <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-400">
+                    Inativo
+                  </span>
+                )}
               </div>
 
               <div className="p-4">
@@ -276,13 +264,29 @@ export default function ServicosAdminPage() {
                 </h3>
                 <p className="mt-1 text-xs text-white/50">{service.category}</p>
                 <p className="mt-2 text-xs text-white/70 line-clamp-2">
-                  {getDisplayDescription(service)}
+                  {service.description}
                 </p>
 
+                {/* Price & Discount */}
+                <div className="mt-3 flex items-center gap-3">
+                  {service.price && (
+                    <span className="flex items-center gap-1 text-sm font-bold text-green-400">
+                      <DollarSign className="h-3 w-3" />
+                      {service.price.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    </span>
+                  )}
+                  {service.discount_percentage > 0 && (
+                    <span className="flex items-center gap-1 text-xs text-[#C9A84C]">
+                      <Tag className="h-3 w-3" />
+                      {service.discount_percentage}% OFF
+                    </span>
+                  )}
+                </div>
+
                 {/* Badge */}
-                <div className="mt-3">
+                <div className="mt-2">
                   <span className="text-[10px] tracking-wide text-[#C9A84C]">
-                    {service.badgeGarantia}
+                    {service.badge_garantia}
                   </span>
                 </div>
 
@@ -296,51 +300,38 @@ export default function ServicosAdminPage() {
                     Editar
                   </button>
 
-                  {isHidden ? (
-                    <button
-                      onClick={() => unhideService(service.id)}
-                      className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/20 text-green-400 transition-colors hover:bg-green-500/30"
-                      title="Reativar"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setSelectedService(service);
-                        setHideDialogOpen(true);
-                      }}
-                      className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#E30613]/20 text-[#E30613] transition-colors hover:bg-[#E30613]/30"
-                      title="Ocultar"
-                    >
-                      <EyeOff className="h-4 w-4" />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => toggleActive(service)}
+                    className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
+                      service.active
+                        ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30"
+                        : "bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                    }`}
+                    title={service.active ? "Desativar" : "Ativar"}
+                  >
+                    {service.active ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSelectedService(service);
+                      setDeleteDialogOpen(true);
+                    }}
+                    className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/20 text-red-400 transition-colors hover:bg-red-500/30"
+                    title="Excluir"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
             </div>
-          );
-        })}
-      </div>
-
-      {/* Hidden Services Summary */}
-      {hiddenServices.length > 0 && (
-        <div className="rounded-xl border border-[#E30613]/20 bg-[#E30613]/10 p-4">
-          <div className="flex items-center gap-2">
-            <EyeOff className="h-5 w-5 text-[#E30613]" />
-            <span className="text-sm text-[#E30613]">
-              {hiddenServices.length} serviço(s) ocultado(s)
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-white/50">
-            Serviços ocultados não aparecem no catálogo público.
-          </p>
+          ))}
         </div>
       )}
 
       {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="border-white/[0.06] bg-[#0f0f0f]">
+        <DialogContent className="border-white/[0.06] bg-[#0f0f0f] max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-white">Editar Serviço</DialogTitle>
           </DialogHeader>
@@ -358,37 +349,69 @@ export default function ServicosAdminPage() {
                   >
                     {selectedService.type}
                   </span>
-                  <span className="text-xs text-white/50">{selectedService.category}</span>
+                  <span className="text-xs text-white/50">{selectedService.service_id}</span>
                 </div>
-                <h3 className="mt-2 font-montserrat text-lg font-bold text-white">
-                  {selectedService.name}
-                </h3>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-white/70">Nome *</Label>
+                  <Input
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-white/70">Categoria</Label>
+                  <Input
+                    value={editForm.category}
+                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
                 <Label className="text-white/70">Descrição</Label>
                 <Textarea
-                  value={localEdits[selectedService.id]?.description || selectedService.description}
-                  onChange={(e) => saveLocalEdit("description", e.target.value)}
-                  className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  className="rounded-xl border-white/10 bg-white/[0.02] text-white min-h-[100px]"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label className="text-white/70">Preço Base (opcional)</Label>
-                <Input
-                  value={localEdits[selectedService.id]?.price || ""}
-                  onChange={(e) => saveLocalEdit("price", e.target.value)}
-                  placeholder="Preço definido ao executar"
-                  className="rounded-xl border-white/10 bg-white/[0.02] text-white"
-                />
-              </div>
-
-              <div className="rounded-lg bg-yellow-500/10 p-3">
-                <p className="text-xs text-yellow-400">
-                  Nota: Edições locais são mantidas apenas nesta sessão. Para persistência real,
-                  crie uma tabela de serviços personalizados no Supabase.
-                </p>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-white/70">Preço Base (R$)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={editForm.price}
+                    onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                    placeholder="0.00"
+                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-white/70">Desconto (%)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={editForm.discount_percentage}
+                    onChange={(e) => setEditForm({ ...editForm, discount_percentage: e.target.value })}
+                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-white/70">Badge Garantia</Label>
+                  <Input
+                    value={editForm.badge_garantia}
+                    onChange={(e) => setEditForm({ ...editForm, badge_garantia: e.target.value })}
+                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -398,39 +421,50 @@ export default function ServicosAdminPage() {
               variant="outline"
               onClick={() => setEditDialogOpen(false)}
               className="rounded-xl border-white/10 text-white/70"
+              disabled={saving}
             >
               Cancelar
             </Button>
             <Button
               onClick={handleSaveEdit}
+              disabled={saving || !editForm.name}
               className="rounded-xl bg-[#E30613] text-white hover:bg-[#E30613]/90"
             >
-              <Save className="mr-2 h-4 w-4" />
+              {saving ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
               Salvar
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Hide Confirmation */}
-      <AlertDialog open={hideDialogOpen} onOpenChange={setHideDialogOpen}>
+      {/* Delete Confirmation */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent className="border-white/[0.06] bg-[#0f0f0f]">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">Ocultar Serviço</AlertDialogTitle>
+            <AlertDialogTitle className="text-white">Excluir Serviço</AlertDialogTitle>
             <AlertDialogDescription className="text-white/70">
-              Tem certeza que deseja ocultar &quot;{selectedService?.name}&quot;? Ele não aparecerá
-              mais no catálogo público.
+              Tem certeza que deseja excluir &quot;{selectedService?.name}&quot;? Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl border-white/10 text-white/70">
+            <AlertDialogCancel className="rounded-xl border-white/10 text-white/70" disabled={saving}>
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => selectedService && hideService(selectedService)}
-              className="rounded-xl bg-[#E30613] text-white hover:bg-[#E30613]/90"
+              onClick={handleDelete}
+              disabled={saving}
+              className="rounded-xl bg-red-600 text-white hover:bg-red-700"
             >
-              Ocultar
+              {saving ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
