@@ -207,7 +207,7 @@ export default function MinhaContaPage() {
     } else {
       console.log("[minha-conta] Perfil salvo com sucesso!");
       setMessage("Perfil atualizado com sucesso!");
-      setProfile({ ...profile, full_name: fullName, phone, birth_date: BirthDate, avatar_url: avatarUrl, address });
+      setProfile({ ...profile, full_name: fullName, phone, birth_date: birthDate, avatar_url: avatarUrl, address });
     }
   };
 
