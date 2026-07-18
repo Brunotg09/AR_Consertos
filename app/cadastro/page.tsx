@@ -50,7 +50,8 @@ function passwordStrength(pw: string) {
 export default function CadastroPage() {
   const router = useRouter();
 
-  const [fullName, setFullName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [birthDate, setBirthDate] = useState("");
@@ -103,10 +104,16 @@ export default function CadastroPage() {
     reader.readAsDataURL(file);
   };
 
+  const fullName = `${firstName} ${lastName}`.trim();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
+    if (!firstName.trim() || !lastName.trim()) {
+      setError("Preencha nome e sobrenome.");
+      return;
+    }
     if (password.length < 8) {
       setError("A senha deve ter pelo menos 8 caracteres.");
       return;
@@ -291,17 +298,31 @@ export default function CadastroPage() {
         </div>
 
         {/* Nome */}
-        <div>
-          <label className="mb-2 block text-xs font-medium text-white/70">Nome completo *</label>
-          <div className="relative">
-            <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: "#888888" }} />
-            <input
-              required
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-white/[0.03] py-2.5 pl-10 pr-4 text-sm text-white placeholder-white/30 outline-none transition-all focus:border-ar-red/50 focus:ring-1 focus:ring-ar-red/20"
-              placeholder="Seu nome completo"
-            />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-2 block text-xs font-medium text-white/70">Nome *</label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: "#888888" }} />
+              <input
+                required
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-white/[0.03] py-2.5 pl-10 pr-4 text-sm text-white placeholder-white/30 outline-none transition-all focus:border-ar-red/50 focus:ring-1 focus:ring-ar-red/20"
+                placeholder="Primeiro nome"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="mb-2 block text-xs font-medium text-white/70">Sobrenome *</label>
+            <div className="relative">
+              <input
+                required
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-white/[0.03] py-2.5 px-4 text-sm text-white placeholder-white/30 outline-none transition-all focus:border-ar-red/50 focus:ring-1 focus:ring-ar-red/20"
+                placeholder="Sobrenome"
+              />
+            </div>
           </div>
         </div>
 
