@@ -48,8 +48,13 @@ export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [mounted, setMounted] = useState(false);
   const { user, isAdmin, signOut } = useAuth();
   const { totalItems } = useCart();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
@@ -183,7 +188,7 @@ export function Header() {
                 }}
               >
                 <ShoppingCart className="h-4 w-4 text-white" />
-                {totalItems > 0 && (
+                {mounted && totalItems > 0 && (
                   <span
                     className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[9px] font-bold text-white"
                     style={{ backgroundColor: "#E30613" }}

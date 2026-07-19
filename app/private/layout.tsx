@@ -47,9 +47,11 @@ export default function PrivateLayout({
 
   const isLoginPage = pathname === "/private/login";
 
-  // Fetch waiting chat count
+  // Fetch waiting chat count (realtime)
   useEffect(() => {
     if (!isAdmin) return;
+
+    let cancelled = false;
 
     const fetchWaitingCount = async () => {
       try {
@@ -61,17 +63,30 @@ export default function PrivateLayout({
           8000,
           { data: null, error: null, count: 0 }
         );
-        setWaitingChatCount(count || 0);
+        if (!cancelled) setWaitingChatCount(count || 0);
       } catch {
-        setWaitingChatCount(0);
+        if (!cancelled) setWaitingChatCount(0);
       }
     };
 
     fetchWaitingCount();
 
-    const interval = setInterval(fetchWaitingCount, 30000);
+    // Subscribe to changes for instant updates
+    const channel = supabase
+      .channel("admin-waiting-badge")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "chat_sessions" },
+        () => {
+          if (!cancelled) fetchWaitingCount();
+        }
+      )
+      .subscribe();
 
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
   }, [isAdmin]);
 
   useEffect(() => {

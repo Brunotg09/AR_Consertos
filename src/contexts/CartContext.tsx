@@ -53,29 +53,43 @@ interface CartContextValue {
 
 const CartContext = createContext<CartContextValue | null>(null);
 
-const STORAGE_KEY = "ar-consertos-cart";
+const STORAGE_KEY = "arc-cart";
+
+const ENC_KEY = "arc2024x";
+
+function enc(data: string): string {
+  const utf8 = unescape(encodeURIComponent(data));
+  let r = "";
+  for (let i = 0; i < utf8.length; i++) {
+    r += String.fromCharCode(utf8.charCodeAt(i) ^ ENC_KEY.charCodeAt(i % ENC_KEY.length));
+  }
+  return btoa(r);
+}
+
+function dec(encoded: string): string {
+  const data = atob(encoded);
+  let r = "";
+  for (let i = 0; i < data.length; i++) {
+    r += String.fromCharCode(data.charCodeAt(i) ^ ENC_KEY.charCodeAt(i % ENC_KEY.length));
+  }
+  return decodeURIComponent(escape(r));
+}
+
+function loadCart(): CartItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(dec(raw));
+  } catch {}
+  return [];
+}
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+  const [items, setItems] = useState<CartItem[]>(loadCart);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        setItems(JSON.parse(raw));
-      }
-    } catch {
-      // ignore
-    }
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (hydrated) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-    }
-  }, [items, hydrated]);
+    localStorage.setItem(STORAGE_KEY, enc(JSON.stringify(items)));
+  }, [items]);
 
   const addService = useCallback((service: CartServiceItem["service"]) => {
     setItems((prev) => {
@@ -143,6 +157,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const clearCart = useCallback(() => {
     setItems([]);
+    localStorage.removeItem(STORAGE_KEY);
   }, []);
 
   const totalItems = items.reduce((sum, i) => {

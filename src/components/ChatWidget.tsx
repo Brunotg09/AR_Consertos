@@ -32,6 +32,7 @@ export function ChatWidget() {
   const [session, setSession] = useState<ChatSession | null>(null);
   const [showAdminRequest, setShowAdminRequest] = useState(false);
   const [waitingAdmin, setWaitingAdmin] = useState(false);
+  const sessionLoadingRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
@@ -39,60 +40,6 @@ export function ChatWidget() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  // Initialize or load session for logged-in users
-  const initSession = useCallback(async () => {
-    if (!user) return;
-
-    try {
-      // Check for existing session
-      const { data: existingSession } = await supabase
-        .from("chat_sessions")
-        .select("id, status")
-        .eq("user_id", user.id)
-        .neq("status", "encerrado")
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (existingSession) {
-        setSession(existingSession as ChatSession);
-
-        // Load last 20 messages
-        const { data: history } = await supabase
-          .from("chat_messages")
-          .select("id, sender, content, created_at")
-          .eq("session_id", existingSession.id)
-          .order("created_at", { ascending: true })
-          .limit(20);
-
-        if (history && history.length > 0) {
-          setMessages(history as Message[]);
-        }
-
-        if (existingSession.status === "aguardando_admin") {
-          setWaitingAdmin(true);
-        }
-
-        // Subscribe to realtime updates
-        subscribeToSession(existingSession.id);
-      } else {
-        // Create new session
-        const { data: newSession, error } = await supabase
-          .from("chat_sessions")
-          .insert([{ user_id: user.id, status: "bot" }])
-          .select("id, status")
-          .single();
-
-        if (!error && newSession) {
-          setSession(newSession as ChatSession);
-          subscribeToSession(newSession.id);
-        }
-      }
-    } catch (err) {
-      console.error("Error initializing chat session:", err);
-    }
-  }, [user]);
 
   // Subscribe to realtime updates
   const subscribeToSession = useCallback((sessionId: string) => {
@@ -138,9 +85,6 @@ export function ChatWidget() {
 
           if (updated.status === "bot") {
             setWaitingAdmin(false);
-            addBotMessage("Nenhum atendente disponível no momento. Continuando com assistente automático.");
-          } else if (updated.status === "encerrado") {
-            addBotMessage("Atendimento encerrado. Obrigado pelo contato com a AR Consertos!");
           }
         }
       )
@@ -149,20 +93,107 @@ export function ChatWidget() {
     channelRef.current = channel;
   }, []);
 
-  const addBotMessage = useCallback((content: string) => {
-    const botMsg: Message = { sender: "bot", content };
-    setMessages((prev) => [...prev, botMsg]);
-  }, []);
+  // Initialize or load session for logged-in users
+  const initSession = useCallback(async () => {
+    if (!user || sessionLoadingRef.current) return;
+    sessionLoadingRef.current = true;
 
-  // Initialize chat when opened
-  useEffect(() => {
-    if (open && user && !session) {
-      initSession();
-      addBotMessage("Olá! Sou a assistente virtual da AR Consertos. Como posso ajudar?");
-    } else if (open && !user && messages.length === 0) {
-      addBotMessage("Olá! Sou a assistente virtual da AR Consertos. Como posso ajudar?");
+    try {
+      // Check for existing active session (not encerrado)
+      const { data: existingSession } = await supabase
+        .from("chat_sessions")
+        .select("id, status")
+        .eq("user_id", user.id)
+        .neq("status", "encerrado")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingSession) {
+        // If session is "bot" (no admin active), close it and show fresh FAQ
+        if (existingSession.status === "bot") {
+          await supabase
+            .from("chat_sessions")
+            .update({ status: "encerrado" })
+            .eq("id", existingSession.id);
+
+          // Check for recent encerrado to show farewell message
+          const { data: lastMsg } = await supabase
+            .from("chat_messages")
+            .select("id, sender, content, created_at")
+            .eq("session_id", existingSession.id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (lastMsg) {
+            setMessages([lastMsg as Message]);
+          }
+          setSession({ id: existingSession.id, status: "encerrado" });
+        } else {
+          // Active session with admin — load messages
+          setSession(existingSession as ChatSession);
+
+          const { data: history } = await supabase
+            .from("chat_messages")
+            .select("id, sender, content, created_at")
+            .eq("session_id", existingSession.id)
+            .order("created_at", { ascending: true })
+            .limit(20);
+
+          if (history && history.length > 0) {
+            setMessages(history as Message[]);
+          }
+
+          if (existingSession.status === "aguardando_admin") {
+            setWaitingAdmin(true);
+          }
+
+          subscribeToSession(existingSession.id);
+        }
+      } else {
+        // No active session — check for recent encerrado (within 24h)
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { data: recentClosed } = await supabase
+          .from("chat_sessions")
+          .select("id, status, updated_at")
+          .eq("user_id", user.id)
+          .eq("status", "encerrado")
+          .gte("updated_at", twentyFourHoursAgo)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (recentClosed) {
+          const { data: lastMsg } = await supabase
+            .from("chat_messages")
+            .select("id, sender, content, created_at")
+            .eq("session_id", recentClosed.id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (lastMsg) {
+            setMessages([lastMsg as Message]);
+          }
+          setSession({ id: recentClosed.id, status: "encerrado" });
+        }
+        // If nothing found, leave empty — FAQ shows
+      }
+    } catch (err) {
+      console.error("Error initializing chat session:", err);
+    } finally {
+      sessionLoadingRef.current = false;
     }
-  }, [open, user, session, initSession, addBotMessage, messages.length]);
+  }, [user, subscribeToSession]);
+
+  // Initialize chat when opened (logged-in users)
+  useEffect(() => {
+    if (open && user && !session && !sessionLoadingRef.current) {
+      initSession();
+    }
+    // Anonymous users: don't add welcome message — FAQ shows when messages is empty
+  }, [open, user, session, initSession]);
 
   // Cleanup realtime subscription
   useEffect(() => {
@@ -177,10 +208,6 @@ export function ChatWidget() {
   const sendToAI = async (userMessage: string) => {
     setLoading(true);
 
-    // Add user message locally
-    const userMsg: Message = { sender: "user", content: userMessage };
-    setMessages((prev) => [...prev, userMsg]);
-
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -188,26 +215,41 @@ export function ChatWidget() {
         body: JSON.stringify({
           messages: messages
             .filter((m) => m.sender !== "admin")
-            .concat(userMsg)
+            .concat({ sender: "user", content: userMessage })
             .map((m) => ({ role: m.sender === "user" ? "user" : "assistant", content: m.content })),
         }),
       });
 
       const data = await response.json();
-      const botResponse: Message = { sender: "bot", content: data.content };
-      setMessages((prev) => [...prev, botResponse]);
 
-      // Save to Supabase for logged-in users
       if (user && session) {
-        await supabase.from("chat_messages").insert([
+        // Logged in: only insert to Supabase, realtime handles local state
+        const { error } = await supabase.from("chat_messages").insert([
           { session_id: session.id, sender: "user", content: userMessage },
           { session_id: session.id, sender: "bot", content: data.content },
+        ]);
+        if (error) {
+          console.error("Supabase insert error:", error);
+          // Fallback: add locally so user sees their message
+          setMessages((prev) => [
+            ...prev,
+            { sender: "user", content: userMessage },
+            { sender: "bot", content: data.content },
+          ]);
+        }
+      } else {
+        // Anonymous: add locally only
+        setMessages((prev) => [
+          ...prev,
+          { sender: "user", content: userMessage },
+          { sender: "bot", content: data.content },
         ]);
       }
     } catch (error) {
       console.error("Error sending message:", error);
       setMessages((prev) => [
         ...prev,
+        { sender: "user", content: userMessage },
         { sender: "bot", content: "Desculpe, o serviço de IA está temporariamente indisponível. Entre em contato pelo telefone (79) 99944-6596 ou tente novamente em instantes." },
       ]);
     } finally {
@@ -217,28 +259,43 @@ export function ChatWidget() {
 
   // Send message directly (when admin is active)
   const sendMessageDirect = async (content: string) => {
-    const userMsg: Message = { sender: "user", content };
-    setMessages((prev) => [...prev, userMsg]);
-
     if (session) {
-      await supabase.from("chat_messages").insert([
+      // Logged in: only insert to Supabase, realtime handles local state
+      const { error } = await supabase.from("chat_messages").insert([
         { session_id: session.id, sender: "user", content },
       ]);
+      if (error) {
+        console.error("Supabase insert error:", error);
+        setMessages((prev) => [...prev, { sender: "user", content }]);
+      }
+    } else {
+      // Anonymous: add locally only
+      setMessages((prev) => [...prev, { sender: "user", content }]);
     }
   };
 
   // Handle FAQ click
-  const handleFAQClick = (faq: (typeof QUICK_FAQS)[0]) => {
-    setMessages((prev) => [
-      ...prev,
-      { sender: "user", content: faq.question },
-      { sender: "bot", content: faq.answer },
-    ]);
-
+  const handleFAQClick = async (faq: (typeof QUICK_FAQS)[0]) => {
     if (user && session) {
-      supabase.from("chat_messages").insert([
+      // Logged in: only insert to Supabase, realtime handles local state
+      const { error } = await supabase.from("chat_messages").insert([
         { session_id: session.id, sender: "user", content: faq.question },
         { session_id: session.id, sender: "bot", content: faq.answer },
+      ]);
+      if (error) {
+        console.error("Supabase insert error:", error);
+        setMessages((prev) => [
+          ...prev,
+          { sender: "user", content: faq.question },
+          { sender: "bot", content: faq.answer },
+        ]);
+      }
+    } else {
+      // Anonymous: add locally only
+      setMessages((prev) => [
+        ...prev,
+        { sender: "user", content: faq.question },
+        { sender: "bot", content: faq.answer },
       ]);
     }
   };
@@ -247,21 +304,41 @@ export function ChatWidget() {
   const requestAdmin = async () => {
     if (!session) return;
 
+    setShowAdminRequest(false);
     setWaitingAdmin(true);
+
     await supabase
       .from("chat_sessions")
       .update({ status: "aguardando_admin" })
       .eq("id", session.id);
 
-    const waitingMsg = "Aguardando um atendente humano... A IA continua disponível enquanto isso.";
-    setMessages((prev) => [...prev, { sender: "bot", content: waitingMsg }]);
-    setShowAdminRequest(false);
-
+    // Insert message to Supabase — realtime handles local state
     await supabase.from("chat_messages").insert([
-      { session_id: session.id, sender: "bot", content: waitingMsg },
+      { session_id: session.id, sender: "bot", content: "Aguardando um atendente humano... A IA continua disponível enquanto isso." },
     ]);
 
     setSession((prev) => prev ? { ...prev, status: "aguardando_admin" } : null);
+  };
+
+  // Reset chat — start new conversation
+  const resetChat = async () => {
+    if (!user) return;
+
+    setMessages([]);
+    setWaitingAdmin(false);
+    setShowAdminRequest(false);
+
+    // Create new session directly
+    const { data: newSession, error } = await supabase
+      .from("chat_sessions")
+      .insert([{ user_id: user.id, status: "bot" }])
+      .select("id, status")
+      .single();
+
+    if (!error && newSession) {
+      setSession(newSession as ChatSession);
+      subscribeToSession(newSession.id);
+    }
   };
 
   // Handle submit
@@ -304,7 +381,7 @@ export function ChatWidget() {
       {/* Chat window */}
       {open && (
         <div
-          className="fixed bottom-24 right-6 z-50 flex h-[28rem] w-80 flex-col overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0f0f0f] shadow-2xl"
+          className="fixed bottom-24 right-6 z-50 flex h-[28rem] w-80 flex-col overflow-hidden rounded-2xl border border-white/[0.06] bg-[#111] shadow-2xl"
           style={{
             backdropFilter: "blur(20px)",
           }}
@@ -326,7 +403,7 @@ export function ChatWidget() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="chat-scroll flex-1 overflow-y-auto p-3" style={{ scrollbarWidth: "thin", scrollbarColor: "#333 #111" }}>
             {messages.length === 0 && (
               <div className="space-y-2">
                 <p className="text-center text-xs text-white/50">Perguntas frequentes:</p>
@@ -419,23 +496,35 @@ export function ChatWidget() {
           )}
 
           {/* Input */}
-          <form onSubmit={handleSubmit} className="flex items-center gap-2 border-t border-white/[0.06] p-3">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Digite sua mensagem..."
-              className="flex-1 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none focus:border-[#E30613]/50"
-              disabled={loading}
-            />
-            <button
-              type="submit"
-              disabled={!input.trim() || loading}
-              className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#E30613] text-white transition-colors hover:bg-[#E30613]/80 disabled:opacity-50"
-            >
-              <Send className="h-4 w-4" />
-            </button>
-          </form>
+          {session?.status === "encerrado" ? (
+            <div className="border-t border-white/[0.06] p-3">
+              <button
+                onClick={resetChat}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#E30613]/20 px-3 py-2.5 text-sm font-medium text-[#E30613] transition-colors hover:bg-[#E30613]/30"
+              >
+                <MessageCircle className="h-4 w-4" />
+                Iniciar nova conversa
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="flex items-center gap-2 border-t border-white/[0.06] p-3">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Digite sua mensagem..."
+                className="flex-1 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none focus:border-[#E30613]/50"
+                disabled={loading}
+              />
+              <button
+                type="submit"
+                disabled={!input.trim() || loading}
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#E30613] text-white transition-colors hover:bg-[#E30613]/80 disabled:opacity-50"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </form>
+          )}
         </div>
       )}
     </>

@@ -33,25 +33,66 @@ const bebas = Bebas_Neue({
 });
 
 export const metadata: Metadata = {
-  title: 'AR Consertos - Conserto de Eletrodomesticos e Eletronica Inverter',
+  metadataBase: new URL('https://ar-consertos.vercel.app'),
+  title: {
+    default: 'AR Consertos - Conserto de Eletrodomésticos e Eletrônica Inverter em Itabaiana/SE',
+    template: '%s | AR Consertos',
+  },
   description:
-    'AR Consertos em Itabaiana/SE. Conserto de eletrodomesticos, linha branca, eletronica avancada inverter. Garantia de 90 dias. Desde 2017.',
+    'AR Consertos em Itabaiana/SE. Conserto de eletrodomésticos, linha branca, eletrônica avançada inverter. Garantia de 90 dias. Desde 2017.',
   keywords: [
-    'conserto eletrodomesticos',
-    'eletronica inverter',
+    'conserto eletrodomésticos',
+    'eletrônica inverter',
+    'conserto ar condicionado',
+    'conserto geladeira',
+    'conserto máquina de lavar',
+    'linha branca',
     'Itabaiana',
     'Sergipe',
     'AR Consertos',
+    'assistência técnica',
   ],
+  authors: [{ name: 'AR Consertos' }],
+  creator: 'AR Consertos',
+  publisher: 'AR Consertos',
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
   icons: {
     icon: '/logo_ArConsertos.webp',
+    shortcut: '/logo_ArConsertos.webp',
   },
+  manifest: '/manifest.json',
   openGraph: {
-    title: 'AR Consertos',
+    title: 'AR Consertos - Conserto de Eletrodomésticos e Eletrônica Inverter',
     description:
-      'Conserto de eletrodomesticos e eletronica inverter em Itabaiana/SE',
+      'Conserto de eletrodomésticos e eletrônica inverter em Itabaiana/SE. Garantia de 90 dias.',
+    url: 'https://ar-consertos.vercel.app',
+    siteName: 'AR Consertos',
     locale: 'pt_BR',
     type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'AR Consertos - Conserto de Eletrodomésticos e Eletrônica Inverter',
+    description:
+      'Conserto de eletrodomésticos e eletrônica inverter em Itabaiana/SE. Garantia de 90 dias.',
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  alternates: {
+    canonical: 'https://ar-consertos.vercel.app',
   },
 };
 

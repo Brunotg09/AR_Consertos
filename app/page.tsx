@@ -3,6 +3,16 @@ import { ServiceCard } from "@/components/ServiceCard";
 import { supabase } from "@/lib/supabase";
 import { ArrowRight, Cpu, ShoppingBag, Wrench } from "lucide-react";
 import Link from "next/link";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: 'AR Consertos - Conserto de Eletrodomésticos e Eletrônica Inverter em Itabaiana/SE',
+  description:
+    'AR Consertos em Itabaiana/SE. Conserto de eletrodomésticos, linha branca, eletrônica avançada inverter. Garantia de 90 dias. Desde 2017.',
+  alternates: {
+    canonical: 'https://ar-consertos.vercel.app',
+  },
+};
 
 async function getServices() {
   try {

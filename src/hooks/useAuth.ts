@@ -29,6 +29,7 @@ export function useAuth() {
       (_event, session) => {
         if (cancelled) return;
         setUser(session?.user ?? null);
+        setLoading(false);
         if (session?.user) {
           checkAdmin(session.user.id);
         } else {
@@ -41,6 +42,7 @@ export function useAuth() {
       if (cancelled) return;
       const session = data.session;
       setUser(session?.user ?? null);
+      setLoading(false);
       if (session?.user) {
         checkAdmin(session.user.id);
       } else {
@@ -48,13 +50,8 @@ export function useAuth() {
       }
     });
 
-    const timer = setTimeout(() => {
-      if (!cancelled) setLoading(false);
-    }, 6000);
-
     return () => {
       cancelled = true;
-      clearTimeout(timer);
       listener.subscription.unsubscribe();
     };
   }, []);

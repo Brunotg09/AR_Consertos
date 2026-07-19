@@ -3,9 +3,12 @@ import Link from "next/link";
 import { ArrowLeft, Shield, Mail, Phone, MapPin } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Política de Privacidade | AR Consertos",
+  title: 'Política de Privacidade',
   description:
-    "Saiba como a AR Consertos coleta, usa e protege seus dados pessoais, em conformidade com a LGPD (Lei 13.709/2018).",
+    'Saiba como a AR Consertos coleta, usa e protege seus dados pessoais, em conformidade com a LGPD (Lei 13.709/2018).',
+  alternates: {
+    canonical: 'https://ar-consertos.vercel.app/politica-de-privacidade',
+  },
 };
 
 const sections = [

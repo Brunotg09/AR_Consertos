@@ -22,10 +22,8 @@ export default function CarrinhoPage() {
   const { items, removeItem, updateProductQuantity, subtotal, clearCart } = useCart();
   const { user, loading: authLoading } = useAuth();
 
-  // Redirect to login if not authenticated
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
+    if (!authLoading && !user) {
       router.push("/login?redirect=/carrinho");
     }
   }, [user, authLoading, router]);
@@ -34,8 +32,7 @@ export default function CarrinhoPage() {
     router.push("/checkout");
   };
 
-  // Show loading or nothing while checking auth
-  if (authLoading || !user) {
+  if (!authLoading && !user) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-12 text-center sm:px-6 lg:px-8">
         <div className="h-8 w-8 mx-auto animate-spin rounded-full border-2 border-[#E30613] border-t-transparent" />

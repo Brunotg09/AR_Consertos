@@ -471,7 +471,8 @@ export default function RelatoriosPage() {
                 <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 10 }} />
                 <YAxis tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 10 }} />
                 <Tooltip
-                  formatter={(value: number) => formatCurrency(value)}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  formatter={(value: any) => formatCurrency(Number(value))}
                   contentStyle={{
                     backgroundColor: "#1a1a1a",
                     border: "1px solid rgba(255,255,255,0.1)",
@@ -527,7 +528,8 @@ export default function RelatoriosPage() {
               <XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 12 }} />
               <YAxis tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 12 }} />
               <Tooltip
-                formatter={(value: number) => formatCurrency(value)}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                formatter={(value: any) => formatCurrency(Number(value))}
                 contentStyle={{
                   backgroundColor: "#1a1a1a",
                   border: "1px solid rgba(255,255,255,0.1)",

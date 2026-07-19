@@ -238,7 +238,8 @@ export default function AdminDashboard() {
                 <Cell fill={COLORS.produtos} />
               </Pie>
               <Tooltip
-                formatter={(value: number) => formatCurrency(value)}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                formatter={(value: any) => formatCurrency(Number(value))}
                 contentStyle={{
                   backgroundColor: "#1a1a1a",
                   border: "1px solid rgba(255,255,255,0.1)",
@@ -286,7 +287,8 @@ export default function AdminDashboard() {
               <XAxis type="number" tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 12 }} />
               <YAxis dataKey="name" type="category" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 12 }} width={80} />
               <Tooltip
-                formatter={(value: number) => formatCurrency(value)}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                formatter={(value: any) => formatCurrency(Number(value))}
                 contentStyle={{
                   backgroundColor: "#1a1a1a",
                   border: "1px solid rgba(255,255,255,0.1)",

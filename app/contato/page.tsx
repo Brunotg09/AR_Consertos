@@ -1,4 +1,14 @@
 import { Phone, Instagram, MapPin, Mail, Clock, Wrench } from "lucide-react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: 'Contato',
+  description:
+    'Entre em contato com a AR Consertos em Itabaiana/SE. Telefone, WhatsApp, Instagram, endereço e horário de funcionamento.',
+  alternates: {
+    canonical: 'https://ar-consertos.vercel.app/contato',
+  },
+};
 
 export default function ContatoPage() {
   return (

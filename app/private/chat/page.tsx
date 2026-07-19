@@ -52,6 +52,9 @@ export default function AdminChatPage() {
 
   const fetchSessions = useCallback(async () => {
     try {
+      // Show: active sessions + encerrado sessions from last 24h
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
       const { data, error } = await supabase
         .from("chat_sessions")
         .select(
@@ -64,7 +67,7 @@ export default function AdminChatPage() {
           profiles:user_id (full_name, phone)
         `
         )
-        .neq("status", "encerrado")
+        .or(`status.neq.encerrado,and(status.eq.encerrado,updated_at.gte.${twentyFourHoursAgo})`)
         .order("updated_at", { ascending: false });
 
       if (error) throw error;
@@ -109,6 +112,8 @@ export default function AdminChatPage() {
       return;
     }
 
+    let cancelled = false;
+
     const loadMessages = async () => {
       try {
         const { data } = await supabase
@@ -117,7 +122,9 @@ export default function AdminChatPage() {
           .eq("session_id", selectedSession.id)
           .order("created_at", { ascending: true });
 
-        setMessages(data || []);
+        if (!cancelled) {
+          setMessages(data || []);
+        }
 
         await supabase
           .from("chat_messages")
@@ -143,25 +150,43 @@ export default function AdminChatPage() {
           filter: `session_id=eq.${selectedSession.id}`,
         },
         (payload) => {
+          if (cancelled) return;
           const newMsg = payload.new as Message;
           setMessages((prev) => {
             if (prev.some((m) => m.id === newMsg.id)) return prev;
             return [...prev, newMsg];
           });
 
-          // Mark as read
-          supabase
-            .from("chat_messages")
-            .update({ read_by_admin: true })
-            .eq("id", newMsg.id);
+          // Mark as read (skip admin's own messages)
+          if (newMsg.sender !== "admin") {
+            supabase
+              .from("chat_messages")
+              .update({ read_by_admin: true })
+              .eq("id", newMsg.id);
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "chat_sessions",
+          filter: `id=eq.${selectedSession.id}`,
+        },
+        (payload) => {
+          if (cancelled) return;
+          const updated = payload.new as ChatSession;
+          setSelectedSession((prev) => prev ? { ...prev, status: updated.status } : null);
         }
       )
       .subscribe();
 
     return () => {
+      cancelled = true;
       supabase.removeChannel(msgChannel);
     };
-  }, [selectedSession]);
+  }, [selectedSession?.id]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -170,15 +195,7 @@ export default function AdminChatPage() {
 
   // Join session
   const handleJoinSession = async (session: ChatSession) => {
-    // Update status to 'com_admin'
-    await supabase
-      .from("chat_sessions")
-      .update({ status: "com_admin" })
-      .eq("id", session.id);
-
-    setSelectedSession({ ...session, status: "com_admin" });
-
-    // Add system message
+    // Insert message FIRST so it's in the DB before we set up the subscription
     await supabase.from("chat_messages").insert([
       {
         session_id: session.id,
@@ -187,6 +204,13 @@ export default function AdminChatPage() {
       },
     ]);
 
+    // Then update status — this triggers realtime which triggers setSelectedSession via the subscription
+    await supabase
+      .from("chat_sessions")
+      .update({ status: "com_admin" })
+      .eq("id", session.id);
+
+    setSelectedSession({ ...session, status: "com_admin" });
     fetchSessions();
   };
 
@@ -194,11 +218,18 @@ export default function AdminChatPage() {
   const handleEndSession = async () => {
     if (!selectedSession) return;
 
-    await supabase
-      .from("chat_sessions")
-      .update({ status: "encerrado" })
-      .eq("id", selectedSession.id);
+    // Add farewell to local state immediately so admin sees it
+    const farewellMsg: Message = {
+      id: crypto.randomUUID(),
+      session_id: selectedSession.id,
+      sender: "admin",
+      content: "Atendimento encerrado. Obrigado pelo contato com a AR Consertos!",
+      read_by_admin: true,
+      created_at: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, farewellMsg]);
 
+    // Insert to Supabase (for user's realtime)
     await supabase.from("chat_messages").insert([
       {
         session_id: selectedSession.id,
@@ -206,6 +237,12 @@ export default function AdminChatPage() {
         content: "Atendimento encerrado. Obrigado pelo contato com a AR Consertos!",
       },
     ]);
+
+    // Update status
+    await supabase
+      .from("chat_sessions")
+      .update({ status: "encerrado" })
+      .eq("id", selectedSession.id);
 
     setSelectedSession(null);
     setMessages([]);
@@ -222,6 +259,7 @@ export default function AdminChatPage() {
     setSending(true);
 
     try {
+      // Only insert to Supabase — realtime handles local state
       await supabase.from("chat_messages").insert([
         { session_id: selectedSession.id, sender: "admin", content },
       ]);

@@ -1,0 +1,16 @@
+{
+  "name": "AR Consertos",
+  "short_name": "AR Consertos",
+  "description": "Conserto de eletrodomésticos e eletrônica inverter em Itabaiana/SE",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#C9A84C",
+  "icons": [
+    {
+      "src": "/logo_ArConsertos.webp",
+      "sizes": "any",
+      "type": "image/webp"
+    }
+  ]
+}

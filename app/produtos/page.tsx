@@ -1,6 +1,16 @@
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { ShoppingCart } from "lucide-react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: 'Produtos Disponíveis',
+  description:
+    'Confira os produtos disponíveis na AR Consertos em Itabaiana/SE. Peças e acessórios para conserto de eletrodomésticos.',
+  alternates: {
+    canonical: 'https://ar-consertos.vercel.app/produtos',
+  },
+};
 
 interface Product {
   id: number;
