@@ -1,36 +1,9 @@
 import './globals.css';
 import type { Metadata } from 'next';
-import { Inter, Montserrat, Oswald, Bebas_Neue } from 'next/font/google';
 import { ConditionalLayout } from '@/components/ConditionalLayout';
 import { CartProvider } from '@/contexts/CartContext';
 import { ChatProvider } from '@/components/ChatProvider';
 import { OfflineBanner } from '@/hooks/useOffline';
-
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter',
-  display: 'swap',
-});
-
-const montserrat = Montserrat({
-  subsets: ['latin'],
-  variable: '--font-montserrat',
-  weight: ['400', '700', '900'],
-  display: 'swap',
-});
-
-const oswald = Oswald({
-  subsets: ['latin'],
-  variable: '--font-oswald',
-  display: 'swap',
-});
-
-const bebas = Bebas_Neue({
-  subsets: ['latin'],
-  variable: '--font-bebas',
-  weight: '400',
-  display: 'swap',
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://ar-consertos.vercel.app'),
@@ -94,6 +67,9 @@ export const metadata: Metadata = {
   alternates: {
     canonical: 'https://ar-consertos.vercel.app',
   },
+  verification: {
+    google: '1HEMZIn_wJ8Q0rbpOylZiRbhjQPq59J0hSLz_k6s-8Q',
+  },
 };
 
 export default function RootLayout({
@@ -104,7 +80,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body
-        className={`${inter.variable} ${montserrat.variable} ${oswald.variable} ${bebas.variable} min-h-screen flex flex-col`}
+        className="min-h-screen flex flex-col"
       >
         <OfflineBanner />
         <CartProvider>
