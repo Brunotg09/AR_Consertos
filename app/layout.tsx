@@ -47,12 +47,21 @@ export const metadata: Metadata = {
     siteName: 'AR Consertos',
     locale: 'pt_BR',
     type: 'website',
+    images: [
+      {
+        url: 'https://ar-consertos.vercel.app/logo_ArConsertos.webp',
+        width: 512,
+        height: 512,
+        alt: 'AR Consertos - Conserto de Eletrodomésticos',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'AR Consertos - Conserto de Eletrodomésticos e Eletrônica Inverter',
     description:
       'Conserto de eletrodomésticos e eletrônica inverter em Itabaiana/SE. Garantia de 90 dias.',
+    images: ['https://ar-consertos.vercel.app/logo_ArConsertos.webp'],
   },
   robots: {
     index: true,
