@@ -7,8 +7,9 @@ import { OfflineBanner } from '@/hooks/useOffline';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://ar-consertos.vercel.app'),
+  applicationName: 'AR Consertos',
   title: {
-    default: 'AR Consertos - Conserto de Eletrodomésticos e Eletrônica Inverter em Itabaiana/SE',
+    default: 'AR Consertos - Conserto de Eletrodomésticos e Eletrônica',
     template: '%s | AR Consertos',
   },
   description:
@@ -39,9 +40,9 @@ export const metadata: Metadata = {
   },
   manifest: '/manifest.json',
   openGraph: {
-    title: 'AR Consertos - Conserto de Eletrodomésticos e Eletrônica Inverter',
+    title: 'AR Consertos - Conserto de Eletrodomésticos e Eletrônica',
     description:
-      'Conserto de eletrodomésticos e eletrônica inverter em Itabaiana/SE. Garantia de 90 dias.',
+      'AR Consertos em Itabaiana/SE. Conserto de eletrodomésticos, linha branca, eletrônica avançada inverter.',
     url: 'https://ar-consertos.vercel.app',
     siteName: 'AR Consertos',
     locale: 'pt_BR',
@@ -79,6 +80,45 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify([
+              {
+                '@context': 'https://schema.org',
+                '@type': 'WebSite',
+                name: 'AR Consertos',
+                url: 'https://ar-consertos.vercel.app/',
+              },
+              {
+                '@context': 'https://schema.org',
+                '@type': 'LocalBusiness',
+                name: 'AR Consertos',
+                description: 'Conserto de eletrodomésticos e eletrônica inverter em Itabaiana/SE',
+                url: 'https://ar-consertos.vercel.app',
+              telephone: '+55-79-99944-6596',
+              address: {
+                '@type': 'PostalAddress',
+                addressLocality: 'Itabaiana',
+                addressRegion: 'SE',
+                addressCountry: 'BR',
+              },
+              geo: {
+                '@type': 'GeoCoordinates',
+                latitude: -10.6842,
+                longitude: -37.4216,
+              },
+              areaServed: {
+                '@type': 'City',
+                name: 'Itabaiana',
+              },
+              priceRange: '$$',
+              openingHours: 'Mo-Fr 08:00-18:00, Sa 08:00-12:00',
+            }]),
+          }}
+        />
+      </head>
       <body
         className="min-h-screen flex flex-col"
       >
