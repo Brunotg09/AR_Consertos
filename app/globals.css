@@ -194,3 +194,95 @@
     border-radius: 4px;
   }
 }
+
+/* ===== PWA Install Banner Animations ===== */
+@keyframes install-slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes install-slide-down {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(100%); opacity: 0; }
+}
+@keyframes install-gradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes install-glow {
+  0% { box-shadow: 0 0 20px rgba(201,168,76,0.4), 0 0 40px rgba(227,6,19,0.2), 0 4px 20px rgba(0,0,0,0.5); }
+  33% { box-shadow: 0 0 20px rgba(227,6,19,0.4), 0 0 40px rgba(139,92,246,0.2), 0 4px 20px rgba(0,0,0,0.5); }
+  66% { box-shadow: 0 0 20px rgba(139,92,246,0.4), 0 0 40px rgba(201,168,76,0.2), 0 4px 20px rgba(0,0,0,0.5); }
+  100% { box-shadow: 0 0 20px rgba(201,168,76,0.4), 0 0 40px rgba(227,6,19,0.2), 0 4px 20px rgba(0,0,0,0.5); }
+}
+@keyframes install-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+@keyframes install-shake {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-8deg); }
+  75% { transform: rotate(8deg); }
+}
+@keyframes shimmer-line {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes border-flow {
+  0% { border-color: #C9A84C; }
+  33% { border-color: #E30613; }
+  66% { border-color: #8B5CF6; }
+  100% { border-color: #C9A84C; }
+}
+
+/* ===== PWA Update Banner Animations ===== */
+@keyframes update-slide-down {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes update-slide-up {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-100%); opacity: 0; }
+}
+@keyframes update-glow {
+  0% { box-shadow: 0 0 20px rgba(201,168,76,0.5), 0 4px 20px rgba(0,0,0,0.3); }
+  33% { box-shadow: 0 0 20px rgba(227,6,19,0.5), 0 4px 20px rgba(0,0,0,0.3); }
+  66% { box-shadow: 0 0 20px rgba(139,92,246,0.5), 0 4px 20px rgba(0,0,0,0.3); }
+  100% { box-shadow: 0 0 20px rgba(201,168,76,0.5), 0 4px 20px rgba(0,0,0,0.3); }
+}
+@keyframes update-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+@keyframes update-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes update-bounce {
+  0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-4px); }
+  60% { transform: translateY(-2px); }
+}
+
+/* PWA banner utility classes */
+.pwabanner-slide-up { animation: install-slide-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.pwabanner-slide-down { animation: install-slide-down 0.5s ease-in forwards; }
+.pwabanner-glow { animation: install-glow 3s ease-in-out infinite, border-flow 4s linear infinite; }
+.pwabanner-shake { animation: install-shake 2s ease-in-out infinite; }
+.pwabanner-pulse { animation: install-pulse 2s ease-in-out infinite; }
+.pwabanner-gradient { animation: install-gradient 3s ease infinite; background-size: 200% 100%; }
+.pwabanner-shimmer { background: linear-gradient(90deg, transparent, #C9A84C, #E30613, #8B5CF6, transparent); background-size: 200% 100%; animation: shimmer-line 2s linear infinite; }
+.pwabanner-shimmer-bottom { background: linear-gradient(90deg, transparent, #8B5CF6, #E30613, #C9A84C, transparent); background-size: 200% 100%; animation: shimmer-line 2s linear infinite 1s; }
+
+.update-slide-down { animation: update-slide-down 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.update-slide-up { animation: update-slide-up 0.5s ease-in forwards; }
+.update-glow { animation: update-glow 3s ease-in-out infinite, border-flow 4s linear infinite; }
+.update-pulse { animation: update-pulse 2s ease-in-out infinite; }
+.update-bounce { animation: update-bounce 2s ease infinite; }
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent; }

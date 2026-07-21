@@ -2,7 +2,7 @@
 
 import { ServiceCard } from "@/components/ServiceCard";
 import { useServices } from "@/hooks/useServices";
-import { Cpu, Zap, Microscope, Loader2 } from "lucide-react";
+import { Cpu, Loader2, Microscope, Zap } from "lucide-react";
 
 export default function InverterPage() {
   const { services, loading } = useServices({ activeOnly: true, type: "inverter" });
@@ -16,10 +16,10 @@ export default function InverterPage() {
   }
 
   return (
-    <div>
+    <div className="pb-10">
       {/* Hero inverter */}
       <section className="border-b border-white/5" style={{ backgroundColor: "#161616" }}>
-        <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+        <div className="mx-auto  max-w-full px-4 py-12 sm:px-8 lg:px-20">
           <div className="flex flex-col items-center text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-full" style={{ backgroundColor: "#8B5CF620" }}>
               <Cpu className="h-8 w-8" style={{ color: "#8B5CF6" }} />
@@ -52,7 +52,7 @@ export default function InverterPage() {
       </section>
 
       {/* Grid */}
-      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+      <div className="mx-auto  max-w-full px-4 py-12 sm:px-8 lg:px-20">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {services.map((service) => (
             <ServiceCard key={service.id} service={service} variant="inverter" />

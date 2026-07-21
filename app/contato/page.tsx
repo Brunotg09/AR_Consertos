@@ -1,4 +1,4 @@
-import { Phone, Instagram, MapPin, Mail, Clock, Wrench } from "lucide-react";
+import { Clock, Instagram, Mail, MapPin, Phone, Wrench } from "lucide-react";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function ContatoPage() {
   return (
-    <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
       <div className="flex items-center gap-3">
         <div className="h-1 w-8 rounded" style={{ backgroundColor: "#C9A84C" }} />
         <h1 className="font-bebas text-3xl tracking-wide text-white sm:text-4xl">

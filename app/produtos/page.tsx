@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase";
-import Link from "next/link";
 import { ShoppingCart } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: 'Produtos Disponíveis',
@@ -61,7 +61,7 @@ export default async function ProdutosPage() {
   const products = await getProducts();
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+    <div className="mx-auto  max-w-full px-4 py-12 sm:px-8 lg:px-20">
       <div className="flex items-center gap-3">
         <div className="h-1 w-8 rounded" style={{ backgroundColor: "#E30613" }} />
         <h1 className="font-bebas text-3xl tracking-wide text-white sm:text-4xl">

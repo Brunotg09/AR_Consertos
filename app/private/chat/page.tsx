@@ -11,14 +11,17 @@ import {
   XCircle,
   HeadphonesIcon,
   Loader2,
+  ArrowLeft,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 interface ChatSession {
   id: string;
   user_id: string;
+  admin_id?: string | null;
   status: "bot" | "aguardando_admin" | "com_admin" | "encerrado";
   created_at: string;
   updated_at: string;
@@ -32,18 +35,27 @@ interface Message {
   id: string;
   session_id: string;
   sender: "user" | "bot" | "admin";
+  admin_id?: string | null;
   content: string;
   read_by_admin: boolean;
   created_at: string;
 }
 
+interface AdminProfile {
+  id: string;
+  full_name: string;
+}
+
 export default function AdminChatPage() {
+  const { user } = useAuth();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<ChatSession | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [filter, setFilter] = useState<"ativas" | "pendentes" | "encerradas">("ativas");
+  const [adminNames, setAdminNames] = useState<Record<string, string>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
@@ -52,7 +64,6 @@ export default function AdminChatPage() {
 
   const fetchSessions = useCallback(async () => {
     try {
-      // Show: active sessions + encerrado sessions from last 24h
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
       const { data, error } = await supabase
@@ -78,6 +89,13 @@ export default function AdminChatPage() {
       setLoading(false);
     }
   }, []);
+
+  const filteredSessions = sessions.filter((s) => {
+    if (filter === "ativas") return s.status === "aguardando_admin" || s.status === "com_admin";
+    if (filter === "pendentes") return s.status === "aguardando_admin";
+    if (filter === "encerradas") return s.status === "encerrado";
+    return true;
+  });
 
   useEffect(() => {
     fetchSessions();
@@ -122,8 +140,22 @@ export default function AdminChatPage() {
           .eq("session_id", selectedSession.id)
           .order("created_at", { ascending: true });
 
-        if (!cancelled) {
-          setMessages(data || []);
+        if (cancelled) return;
+
+        setMessages(data || []);
+
+        // Fetch admin names for messages
+        const adminIds = Array.from(new Set((data || []).filter((m) => m.admin_id).map((m) => m.admin_id as string)));
+        if (adminIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from("profiles")
+            .select("id, full_name")
+            .in("id", adminIds);
+          if (!cancelled && profiles) {
+            const names: Record<string, string> = {};
+            profiles.forEach((p) => { names[p.id] = p.full_name; });
+            setAdminNames((prev) => ({ ...prev, ...names }));
+          }
         }
 
         await supabase
@@ -195,22 +227,29 @@ export default function AdminChatPage() {
 
   // Join session
   const handleJoinSession = async (session: ChatSession) => {
-    // Insert message FIRST so it's in the DB before we set up the subscription
+    // Block if another admin already joined
+    if (session.admin_id && session.admin_id !== user?.id) {
+      alert("Esta sessão já está sendo atendida por outro atendente.");
+      return;
+    }
+
+    // Insert message with admin_id
     await supabase.from("chat_messages").insert([
       {
         session_id: session.id,
         sender: "admin",
+        admin_id: user?.id,
         content: "Olá! Sou o atendente da AR Consertos. Como posso ajudar?",
       },
     ]);
 
-    // Then update status — this triggers realtime which triggers setSelectedSession via the subscription
+    // Update status and save admin_id
     await supabase
       .from("chat_sessions")
-      .update({ status: "com_admin" })
+      .update({ status: "com_admin", admin_id: user?.id })
       .eq("id", session.id);
 
-    setSelectedSession({ ...session, status: "com_admin" });
+    setSelectedSession({ ...session, status: "com_admin", admin_id: user?.id });
     fetchSessions();
   };
 
@@ -261,7 +300,7 @@ export default function AdminChatPage() {
     try {
       // Only insert to Supabase — realtime handles local state
       await supabase.from("chat_messages").insert([
-        { session_id: selectedSession.id, sender: "admin", content },
+        { session_id: selectedSession.id, sender: "admin", admin_id: user?.id, content },
       ]);
     } catch (error) {
       console.error("Error sending message:", error);
@@ -293,9 +332,9 @@ export default function AdminChatPage() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] min-h-[600px] gap-4">
+    <div className="flex h-[calc(100vh-8rem)] min-h-[400px] gap-4">
       {/* Sessions List */}
-      <div className="w-80 shrink-0 overflow-hidden rounded-xl border border-white/[0.06] bg-[#0f0f0f]">
+      <div className={`${selectedSession ? "hidden" : "flex"} w-full flex-col overflow-hidden rounded-xl border border-white/[0.06] bg-[#0f0f0f] md:flex md:w-80`}>
         {/* Header with badge */}
         <div className="flex items-center justify-between border-b border-white/[0.06] p-4">
           <h2 className="font-montserrat text-lg font-bold text-white">Conversas</h2>
@@ -306,18 +345,41 @@ export default function AdminChatPage() {
           )}
         </div>
 
+        {/* Filters */}
+        <div className="flex gap-1 border-b border-white/[0.06] p-2">
+          {([
+            { key: "ativas" as const, label: "Ativas" },
+            { key: "pendentes" as const, label: "Pendentes" },
+            { key: "encerradas" as const, label: "Encerradas" },
+          ]).map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors ${
+                filter === f.key
+                  ? "bg-[#C9A84C]/20 text-[#C9A84C]"
+                  : "text-white/50 hover:bg-white/[0.04]"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
         {/* Sessions */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-white/50" />
             </div>
-          ) : sessions.length === 0 ? (
+          ) : filteredSessions.length === 0 ? (
             <div className="p-6 text-center text-sm text-white/50">
-              Nenhuma conversa ativa
+              {filter === "ativas" && "Nenhuma conversa ativa"}
+              {filter === "pendentes" && "Nenhuma conversa pendente"}
+              {filter === "encerradas" && "Nenhuma conversa encerrada"}
             </div>
           ) : (
-            sessions.map((session) => (
+            filteredSessions.map((session) => (
               <button
                 key={session.id}
                 onClick={() =>
@@ -356,12 +418,18 @@ export default function AdminChatPage() {
       </div>
 
       {/* Chat Area */}
-      <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-white/[0.06] bg-[#0f0f0f]">
+      <div className={`${selectedSession ? "flex" : "hidden"} flex-1 flex-col overflow-hidden rounded-xl border border-white/[0.06] bg-[#0f0f0f] md:flex`}>
         {selectedSession ? (
           <>
             {/* Chat Header */}
             <div className="flex items-center justify-between border-b border-white/[0.06] p-4">
               <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setSelectedSession(null)}
+                  className="md:hidden rounded-lg p-1.5 hover:bg-white/[0.06]"
+                >
+                  <ArrowLeft className="h-5 w-5 text-white/70" />
+                </button>
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.04]">
                   <User className="h-5 w-5 text-white/70" />
                 </div>
@@ -388,7 +456,7 @@ export default function AdminChatPage() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="chat-scroll flex-1 overflow-y-auto p-4 pb-2" style={{ scrollbarWidth: "thin", scrollbarColor: "#333 #111" }}>
               {messages.map((msg) => (
                 <div
                   key={msg.id}
@@ -414,7 +482,7 @@ export default function AdminChatPage() {
                     {msg.sender === "admin" && (
                       <div className="mb-1 flex items-center gap-1 text-xs font-medium text-[#C9A84C]">
                         <HeadphonesIcon className="h-3 w-3" />
-                        Atendente
+                        {msg.admin_id ? (adminNames[msg.admin_id] || "Atendente") : "Atendente"}
                       </div>
                     )}
                     <p className="text-sm">{msg.content}</p>

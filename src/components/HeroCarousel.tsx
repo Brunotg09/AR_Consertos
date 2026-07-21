@@ -80,8 +80,8 @@ export function HeroCarousel() {
         }}
       />
 
-      <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-12 lg:px-8 lg:py-16">
-        <div className="relative h-80 sm:96 lg:h-[28rem]">
+      <div className="relative mx-auto max-w-7xl px-3 py-8 sm:px-6 sm:py-12 lg:px-8 lg:py-16">
+        <div className="relative h-72 sm:h-96 lg:h-[28rem]">
           {banners.map((banner, index) => {
             const isActive = index === current;
             const slideAccent = banner.accent_color || "#E30613";
@@ -91,7 +91,7 @@ export function HeroCarousel() {
             return (
               <div
                 key={banner.id}
-                className={`absolute inset-0 flex flex-col items-center justify-center rounded-2xl border px-8 text-center transition-all duration-700 ease-out ${
+                className={`absolute inset-0 flex flex-col items-center justify-center rounded-2xl border px-4 py-6 text-center transition-all duration-700 ease-out sm:px-8 sm:py-8 ${
                   isActive
                     ? "opacity-100 translate-x-0"
                     : "opacity-0 translate-x-10 pointer-events-none"
@@ -112,7 +112,7 @@ export function HeroCarousel() {
               >
                 {!hasImage && (
                   <div
-                    className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl transition-transform duration-500"
+                    className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl transition-transform duration-500 sm:mb-6 sm:h-16 sm:w-16"
                     style={{
                       backgroundColor: `${slideAccent}15`,
                       color: slideAccent,
@@ -122,16 +122,16 @@ export function HeroCarousel() {
                     <Icon className="h-7 w-7" />
                   </div>
                 )}
-                <h2 className="font-bebas text-4xl tracking-widest text-white sm:text-5xl lg:text-6xl drop-shadow-lg">
+                <h2 className="font-bebas text-3xl tracking-widest text-white sm:text-5xl lg:text-6xl drop-shadow-lg">
                   {banner.title || ""}
                 </h2>
-                <p className="mt-4 max-w-lg text-sm leading-relaxed sm:text-base drop-shadow-md" style={{ color: "#d0d0d0" }}>
+                <p className="mt-3 max-w-lg text-xs leading-relaxed sm:mt-4 sm:text-base drop-shadow-md" style={{ color: "#d0d0d0" }}>
                   {banner.subtitle || ""}
                 </p>
                 {banner.link && (
                   <a
                     href={banner.link}
-                    className="mt-8 inline-flex items-center gap-2 rounded-xl px-8 py-3.5 text-sm font-bold text-white transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.03]"
+                    className="mt-5 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-bold text-white transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.03] sm:mt-8 sm:px-8 sm:py-3.5 sm:text-sm"
                     style={{
                       background: `linear-gradient(135deg, ${slideAccent} 0%, ${slideAccent}dd 100%)`,
                       boxShadow: `0 6px 20px ${slideAccent}40, 0 1px 2px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.15)`,

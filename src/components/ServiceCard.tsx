@@ -64,30 +64,39 @@ export function ServiceCard({ service, variant }: ServiceCardProps) {
 
   return (
     <div
-      className="group relative overflow-hidden rounded-2xl transition-all duration-300"
+      className="group relative rounded-2xl p-[1px] transition-all duration-300"
       style={{
-        background: "rgba(34, 34, 34, 0.45)",
-        backdropFilter: "blur(16px) saturate(140%)",
-        WebkitBackdropFilter: "blur(16px) saturate(140%)",
-        border: "1px solid transparent",
-        borderImage: isInverter
-          ? "linear-gradient(135deg, rgba(139,92,246,0.35), rgba(139,92,246,0.05), transparent) 1"
-          : "linear-gradient(135deg, rgba(227,6,19,0.35), rgba(227,6,19,0.05), transparent) 1",
-        boxShadow: "0 4px 20px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.04)",
+        background: isInverter
+          ? "linear-gradient(135deg, rgba(139,92,246,0.35), rgba(139,92,246,0.05), transparent)"
+          : "linear-gradient(135deg, rgba(227,6,19,0.35), rgba(227,6,19,0.05), transparent)",
       }}
       onMouseEnter={(e) => {
         const el = e.currentTarget;
         el.style.transform = "scale(1.02) translateY(-4px)";
+        el.style.background = isInverter
+          ? "linear-gradient(135deg, rgba(139,92,246,0.55), rgba(139,92,246,0.15), transparent)"
+          : "linear-gradient(135deg, rgba(227,6,19,0.55), rgba(227,6,19,0.15), transparent)";
         el.style.boxShadow = isInverter
-          ? "0 12px 40px rgba(0,0,0,0.35), 0 0 50px rgba(139,92,246,0.18), inset 0 1px 0 rgba(255,255,255,0.06)"
-          : "0 12px 40px rgba(0,0,0,0.35), 0 0 50px rgba(227,6,19,0.18), inset 0 1px 0 rgba(255,255,255,0.06)";
+          ? "0 12px 40px rgba(0,0,0,0.35), 0 0 50px rgba(139,92,246,0.18)"
+          : "0 12px 40px rgba(0,0,0,0.35), 0 0 50px rgba(227,6,19,0.18)";
       }}
       onMouseLeave={(e) => {
         const el = e.currentTarget;
         el.style.transform = "scale(1) translateY(0)";
-        el.style.boxShadow = "0 4px 20px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.04)";
+        el.style.background = isInverter
+          ? "linear-gradient(135deg, rgba(139,92,246,0.35), rgba(139,92,246,0.05), transparent)"
+          : "linear-gradient(135deg, rgba(227,6,19,0.35), rgba(227,6,19,0.05), transparent)";
+        el.style.boxShadow = "none";
       }}
     >
+      <div
+        className="relative h-full overflow-hidden rounded-2xl"
+        style={{
+          background: "rgba(34, 34, 34, 0.9)",
+          backdropFilter: "blur(16px) saturate(140%)",
+          WebkitBackdropFilter: "blur(16px) saturate(140%)",
+        }}
+      >
       {/* Image carousel */}
       <div className="relative h-[180px] w-full overflow-hidden">
         {images.length > 0 ? (
@@ -211,6 +220,7 @@ export function ServiceCard({ service, variant }: ServiceCardProps) {
             <CalendarCheck className="h-4 w-4" />
           </button>
         </div>
+      </div>
       </div>
     </div>
   );

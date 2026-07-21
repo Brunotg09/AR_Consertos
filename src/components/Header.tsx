@@ -104,9 +104,9 @@ export function Header() {
         <div className="relative mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-4">
             {/* Esquerda: logo com imagem */}
-            <Link href="/" className="flex items-center gap-3">
+            <Link href="/" className="flex shrink-0 items-center gap-2 sm:gap-3">
               <div
-                className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border-[2.5px] transition-all duration-300 hover:scale-105"
+                className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border-[2.5px] transition-all duration-300 hover:scale-105 sm:h-16 sm:w-16"
                 style={{
                   borderColor: "#C9A84C",
                   boxShadow: "0 0 20px rgba(201,168,76,0.25), 0 0 40px rgba(201,168,76,0.1), inset 0 0 12px rgba(201,168,76,0.08)",
@@ -130,30 +130,30 @@ export function Header() {
             </Link>
 
             {/* Centro: branding */}
-            <div className="flex flex-col items-center">
-              <div className="flex items-baseline gap-1.5">
+            <div className="flex min-w-0 flex-1 flex-col items-center px-2 sm:px-4">
+              <div className="flex items-baseline gap-1 sm:gap-1.5">
                 <span
-                  className="font-montserrat text-xl font-black tracking-tight sm:text-4xl"
+                  className="truncate font-montserrat text-lg font-black tracking-tight sm:text-4xl"
                  
                 >
                   A.R
                 </span>
-                <span className="font-montserrat text-xl font-black tracking-tight text-white sm:text-4xl">
+                <span className="truncate font-montserrat text-lg font-black tracking-tight text-white sm:text-4xl">
                   CONSERTO
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2">
                 <span
-                  className="font-inter text-[9px] sm:text-[12px] italic"
+                  className="hidden font-inter text-[12px] italic sm:block"
                   style={{ color: "#888888" }}
                 >
                   TÉCNICO
                 </span>
-                <span className="text-gradient-gold font-montserrat text-[9px] sm:text-[12px] font-bold tracking-wide">
+                <span className="text-gradient-gold hidden font-montserrat text-[12px] font-bold tracking-wide sm:block">
                   ELETRODOMÉSTICOS
                 </span>
                 <span
-                  className="rounded px-1.5 py-0.5 font-oswald text-[9px] sm:text-[10px] tracking-wider text-white"
+                  className="hidden rounded px-1.5 py-0.5 font-oswald text-[10px] tracking-wider text-white sm:block"
                   style={{ backgroundColor: "#8B5CF6" }}
                 >
                   INVERTER
@@ -162,11 +162,11 @@ export function Header() {
             </div>
 
             {/* Direita: busca + carrinho + hambúrguer */}
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
               {/* Search toggle */}
               <button
                 onClick={() => setSearchOpen(true)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-300 hover:scale-105"
+                className="flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-300 hover:scale-105 sm:h-10 sm:w-10"
                 style={{
                   background: "linear-gradient(135deg, rgba(60,60,60,0.6) 0%, rgba(20,20,20,0.8) 100%)",
                   border: "1px solid rgba(255,255,255,0.08)",
@@ -180,7 +180,7 @@ export function Header() {
               {/* Cart */}
               <Link
                 href="/carrinho"
-                className="relative flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-300 hover:scale-105"
+                className="relative flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-300 hover:scale-105 sm:h-10 sm:w-10"
                 style={{
                   background: "linear-gradient(135deg, rgba(60,60,60,0.6) 0%, rgba(20,20,20,0.8) 100%)",
                   border: "1px solid rgba(255,255,255,0.08)",
@@ -201,7 +201,7 @@ export function Header() {
               {/* Hambúrguer */}
               <button
                 onClick={() => setDrawerOpen(true)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-300 hover:scale-105"
+                className="flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-300 hover:scale-105 sm:h-10 sm:w-10"
                 style={{
                   background: "linear-gradient(135deg, rgba(60,60,60,0.6) 0%, rgba(20,20,20,0.8) 100%)",
                   border: "1px solid rgba(255,255,255,0.08)",
@@ -266,7 +266,7 @@ export function Header() {
               }}
             >
               <Phone className="h-3 w-3" />
-              <span>(79) 99944-6596</span>
+              <span className="hidden sm:inline">(79) 99944-6596</span>
             </a>
 
             {/* Instagram - chip roxo */}

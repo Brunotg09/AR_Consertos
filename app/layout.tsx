@@ -35,10 +35,16 @@ export const metadata: Metadata = {
     telephone: false,
   },
   icons: {
-    icon: '/logo_ArConsertos.webp',
-    shortcut: '/logo_ArConsertos.webp',
+    icon: [
+      { url: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512x512.png', sizes: '512x512', type: 'image/png' },
+      { url: '/logo_ArConsertos.webp', sizes: 'any', type: 'image/webp' },
+    ],
+    shortcut: '/icons/icon-192x192.png',
+    apple: '/icons/icon-512x512.png',
   },
   manifest: '/manifest.json',
+  themeColor: '#C9A84C',
   openGraph: {
     title: 'AR Consertos - Conserto de Eletrodomésticos e Eletrônica',
     description:
@@ -88,8 +94,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" className="overflow-x-hidden">
       <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+        <meta name="theme-color" content="#C9A84C" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="AR Consertos" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -129,7 +141,7 @@ export default function RootLayout({
         />
       </head>
       <body
-        className="min-h-screen flex flex-col"
+        className="min-h-screen flex flex-col overflow-x-hidden"
       >
         <OfflineBanner />
         <CartProvider>

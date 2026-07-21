@@ -1,12 +1,12 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { supabase, withTimeout } from "@/lib/supabase";
 import { ServiceIcon } from "@/components/ServiceIcon";
 import { useCart } from "@/contexts/CartContext";
-import { CalendarCheck, ArrowLeft, Tag, Award, Image as ImageIcon, Loader2 } from "lucide-react";
+import { supabase, withTimeout } from "@/lib/supabase";
+import { ArrowLeft, Award, CalendarCheck, Loader2, Tag } from "lucide-react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 interface ServiceData {
   id: number;
@@ -105,7 +105,7 @@ export default function ServicoDetailPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
+    <div className="mx-auto  max-w-full px-4 py-12 sm:px-8 lg:px-20">
       <Link
         href={isInverter ? "/inverter" : "/servicos"}
         className="inline-flex items-center gap-2 text-xs font-medium transition-colors hover:text-white"

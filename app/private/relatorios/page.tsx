@@ -1,18 +1,5 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import {
-  Calendar,
-  Download,
-  FileJson,
-  FileSpreadsheet,
-  TrendingUp,
-  DollarSign,
-  Package,
-  Wrench,
-} from "lucide-react";
-import { supabase } from "@/lib/supabase";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -20,23 +7,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  Legend,
-  Cell,
-} from "recharts";
-import { format, subDays, subMonths, subYears, startOfDay, endOfDay } from "date-fns";
+import { supabase } from "@/lib/supabase";
+import { endOfDay, format, startOfDay, subDays, subMonths, subYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import {
+  Calendar,
+  DollarSign,
+  Download,
+  FileJson,
+  FileSpreadsheet,
+  Package,
+  TrendingUp,
+  Wrench,
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 type PeriodOption = "week" | "month" | "quarter" | "year" | "custom";
 
@@ -402,7 +401,7 @@ export default function RelatoriosPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-5">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#E30613]/10">
@@ -550,7 +549,7 @@ export default function RelatoriosPage() {
       <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-6">
         <h2 className="mb-4 font-montserrat text-lg font-bold text-white">Exportar Dados</h2>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
           <button
             onClick={exportJSON}
             disabled={exporting}

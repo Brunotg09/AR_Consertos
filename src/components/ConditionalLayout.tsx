@@ -3,6 +3,8 @@
 import { usePathname } from "next/navigation";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { InstallBanner } from "@/components/InstallBanner";
+import { UpdateBanner } from "@/components/UpdateBanner";
 
 export function ConditionalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -14,9 +16,11 @@ export function ConditionalLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      <UpdateBanner />
       <Header />
-      <main className="flex-1">{children}</main>
+      <main className="flex-1 w-full overflow-x-hidden pb-8">{children}</main>
       <Footer />
+      <InstallBanner />
     </>
   );
 }

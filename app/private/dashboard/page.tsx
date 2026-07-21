@@ -181,7 +181,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <KPICard
           title="Pedidos Hoje"
           value={kpiData?.pedidosHoje ?? 0}
@@ -211,18 +211,18 @@ export default function AdminDashboard() {
       {/* Charts Row */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Revenue by Segment - Pie Chart */}
-        <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-6">
-          <div className="mb-6 flex items-center justify-between">
+        <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-4 sm:p-6">
+          <div className="mb-4 flex items-center justify-between sm:mb-6">
             <div>
-              <h2 className="font-montserrat text-lg font-bold text-white">
+              <h2 className="font-montserrat text-base font-bold text-white sm:text-lg">
                 Faturamento por Segmento
               </h2>
-              <p className="text-sm text-white/50">Distribuição da receita</p>
+              <p className="text-xs text-white/50 sm:text-sm">Distribuição da receita</p>
             </div>
-            <TrendingUp className="h-5 w-5 text-green-500" />
+            <TrendingUp className="h-4 w-4 text-green-500 sm:h-5 sm:w-5" />
           </div>
 
-          <ResponsiveContainer width="100%" height={280}>
+          <ResponsiveContainer width="100%" height={240}>
             <PieChart>
               <Pie
                 data={chartData}
@@ -253,35 +253,35 @@ export default function AdminDashboard() {
           </ResponsiveContainer>
 
           {/* Segment Details */}
-          <div className="mt-4 grid grid-cols-3 gap-4 border-t border-white/[0.06] pt-4">
-            <div className="text-center">
+          <div className="mt-4 grid grid-cols-3 gap-2 text-center border-t border-white/[0.06] pt-4 sm:gap-4">
+            <div>
               <div className="mx-auto mb-1 h-2 w-2 rounded-full" style={{ backgroundColor: COLORS.convencional }} />
-              <p className="text-xs text-white/50">Convencional</p>
-              <p className="font-bold text-white">{formatCurrency(kpiData?.receitaConvencional ?? 0)}</p>
+              <p className="text-[10px] text-white/50 sm:text-xs">Convencional</p>
+              <p className="text-xs font-bold text-white sm:text-base">{formatCurrency(kpiData?.receitaConvencional ?? 0)}</p>
             </div>
-            <div className="text-center">
+            <div>
               <div className="mx-auto mb-1 h-2 w-2 rounded-full" style={{ backgroundColor: COLORS.inverter }} />
-              <p className="text-xs text-white/50">Inverter</p>
-              <p className="font-bold text-white">{formatCurrency(kpiData?.receitaInverter ?? 0)}</p>
+              <p className="text-[10px] text-white/50 sm:text-xs">Inverter</p>
+              <p className="text-xs font-bold text-white sm:text-base">{formatCurrency(kpiData?.receitaInverter ?? 0)}</p>
             </div>
-            <div className="text-center">
+            <div>
               <div className="mx-auto mb-1 h-2 w-2 rounded-full" style={{ backgroundColor: COLORS.produtos }} />
-              <p className="text-xs text-white/50">Produtos</p>
-              <p className="font-bold text-white">{formatCurrency(kpiData?.receitaProdutos ?? 0)}</p>
+              <p className="text-[10px] text-white/50 sm:text-xs">Produtos</p>
+              <p className="text-xs font-bold text-white sm:text-base">{formatCurrency(kpiData?.receitaProdutos ?? 0)}</p>
             </div>
           </div>
         </div>
 
         {/* Revenue Bar Chart */}
-        <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-6">
-          <div className="mb-6">
-            <h2 className="font-montserrat text-lg font-bold text-white">
+        <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-4 sm:p-6">
+          <div className="mb-4 sm:mb-6">
+            <h2 className="font-montserrat text-base font-bold text-white sm:text-lg">
               Comparativo de Receita
             </h2>
-            <p className="text-sm text-white/50">Faturamento por categoria</p>
+            <p className="text-xs text-white/50 sm:text-sm">Faturamento por categoria</p>
           </div>
 
-          <ResponsiveContainer width="100%" height={340}>
+          <ResponsiveContainer width="100%" height={280}>
             <BarChart data={chartData} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
               <XAxis type="number" tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 12 }} />
@@ -431,18 +431,18 @@ function KPICard({
   color: string;
 }) {
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-5">
+    <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-3 sm:p-5">
       <div className="flex items-center justify-between">
         <div
-          className="flex h-10 w-10 items-center justify-center rounded-lg"
+          className="flex h-8 w-8 items-center justify-center rounded-lg sm:h-10 sm:w-10"
           style={{ backgroundColor: `${color}15` }}
         >
-          <Icon className="h-5 w-5" style={{ color }} />
+          <Icon className="h-4 w-4 sm:h-5 sm:w-5" style={{ color }} />
         </div>
       </div>
-      <div className="mt-3">
-        <p className="text-2xl font-bold text-white">{value}</p>
-        <p className="text-sm text-white/50">{title}</p>
+      <div className="mt-2 sm:mt-3">
+        <p className="text-lg font-bold text-white sm:text-2xl">{value}</p>
+        <p className="text-[10px] text-white/50 sm:text-sm">{title}</p>
       </div>
     </div>
   );

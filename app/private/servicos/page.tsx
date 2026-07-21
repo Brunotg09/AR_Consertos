@@ -244,22 +244,22 @@ export default function ServicosAdminPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-4">
-        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4">
-          <p className="text-2xl font-bold text-white">{stats.total}</p>
-          <p className="text-sm text-white/50">Total</p>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-3 text-center sm:p-4">
+          <p className="text-lg font-bold text-white sm:text-2xl">{stats.total}</p>
+          <p className="text-[10px] text-white/50 sm:text-sm">Total</p>
         </div>
-        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4">
-          <p className="text-2xl font-bold text-[#E30613]">{stats.convencional}</p>
-          <p className="text-sm text-white/50">Convencional</p>
+        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-3 text-center sm:p-4">
+          <p className="text-lg font-bold text-[#E30613] sm:text-2xl">{stats.convencional}</p>
+          <p className="text-[10px] text-white/50 sm:text-sm">Convencional</p>
         </div>
-        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4">
-          <p className="text-2xl font-bold text-[#8B5CF6]">{stats.inverter}</p>
-          <p className="text-sm text-white/50">Inverter</p>
+        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-3 text-center sm:p-4">
+          <p className="text-lg font-bold text-[#8B5CF6] sm:text-2xl">{stats.inverter}</p>
+          <p className="text-[10px] text-white/50 sm:text-sm">Inverter</p>
         </div>
-        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4">
-          <p className="text-2xl font-bold text-green-400">{stats.active}</p>
-          <p className="text-sm text-white/50">Ativos</p>
+        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-3 text-center sm:p-4">
+          <p className="text-lg font-bold text-green-400 sm:text-2xl">{stats.active}</p>
+          <p className="text-[10px] text-white/50 sm:text-sm">Ativos</p>
         </div>
       </div>
 

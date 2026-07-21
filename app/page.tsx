@@ -2,8 +2,8 @@ import { HeroCarousel } from "@/components/HeroCarousel";
 import { ServiceCard } from "@/components/ServiceCard";
 import { supabase } from "@/lib/supabase";
 import { ArrowRight, Cpu, ShoppingBag, Wrench } from "lucide-react";
-import Link from "next/link";
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: 'AR Consertos - Conserto de Eletrodomésticos e Eletrônica',
@@ -57,7 +57,7 @@ export default async function Home() {
       {/* Seção O QUE CONSERTAMOS */}
       <section className="relative overflow-hidden">
         <div className="section-glow-red" />
-        <div className="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8 lg:py-32">
+        <div className="mx-auto  max-w-full px-4 py-24 sm:px-6 lg:px-20 lg:py-32">
           <div className="max-w-2xl">
             <div className="flex items-center gap-3">
               <div className="h-px w-10 rounded" style={{ backgroundColor: "#E30613" }} />
@@ -92,10 +92,10 @@ export default async function Home() {
       <section className="relative overflow-hidden" style={{ backgroundColor: "#141414" }}>
         <div className="section-glow-purple" />
         <div
-          className="pointer-events-none absolute left-1/2 top-0 h-[500px] w-[800px] -translate-x-1/2 opacity-20"
+          className="pointer-events-none absolute left-1/2 top-0 h-[500px] w-full max-w-[800px] -translate-x-1/2 opacity-20"
           style={{ background: "radial-gradient(ellipse 50% 40% at 50% 0%, #8B5CF6 0%, transparent 70%)" }}
         />
-        <div className="relative mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8 lg:py-32">
+        <div className="relative mx-auto  max-w-full px-4 py-24 sm:px-6 lg:px-20 lg:py-32">
           <div className="max-w-2xl">
             <div className="flex items-center gap-3">
               <div className="h-px w-10 rounded" style={{ backgroundColor: "#8B5CF6" }} />
@@ -139,9 +139,9 @@ export default async function Home() {
 
       {/* Produtos disponíveis */}
       <section className="border-t border-white/5" style={{ backgroundColor: "#1a1a1a" }}>
-        <div className="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
+        <div className="mx-auto  max-w-full px-4 py-24 sm:px-6 lg:px-20">
           <div className="flex items-center justify-between">
-            <div>
+    <div className="pb-10">
               <div className="flex items-center gap-3">
                 <div className="h-px w-10 rounded" style={{ backgroundColor: "#C9A84C" }} />
                 <span className="font-oswald text-[10px] tracking-widest uppercase" style={{ color: "#C9A84C" }}>

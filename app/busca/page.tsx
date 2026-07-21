@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
-import Link from "next/link";
-import { useServices } from "@/hooks/useServices";
 import { ServiceCard } from "@/components/ServiceCard";
-import { Search, X, ArrowRight, Loader2 } from "lucide-react";
+import { useServices } from "@/hooks/useServices";
+import { ArrowRight, Loader2, Search, X } from "lucide-react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useMemo, useState } from "react";
 
 function BuscaContent() {
   const searchParams = useSearchParams();
@@ -32,7 +32,7 @@ function BuscaContent() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+    <div className="mx-auto  max-w-full px-4 py-12 sm:px-8 lg:px-20">
       <div className="text-center">
         <h1 className="font-bebas text-3xl tracking-wide text-white sm:text-4xl">
           BUSCAR
@@ -118,7 +118,7 @@ function BuscaContent() {
 export default function BuscaPage() {
   return (
     <Suspense fallback={
-      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 text-center">
+      <div className="mx-auto  max-w-full px-4 py-12 sm:px-8 lg:px-20 text-center">
         <p className="text-sm" style={{ color: "#888888" }}>Carregando...</p>
       </div>
     }>

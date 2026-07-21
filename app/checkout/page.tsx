@@ -1,24 +1,23 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { ServiceIcon } from "@/components/ServiceIcon";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
-import { ServiceIcon } from "@/components/ServiceIcon";
 import {
-  Package,
-  Wrench,
-  CreditCard,
-  Banknote,
-  QrCode,
-  Calendar,
-  MapPin,
-  ArrowRight,
-  Check,
   AlertTriangle,
-  Loader2,
+  ArrowRight,
+  Banknote,
+  Calendar,
+  Check,
+  CreditCard,
+  MapPin,
+  Package,
+  QrCode,
+  Wrench
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -138,7 +137,7 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-4xl px-4 py-12 sm:px-8 lg:px-12">
       <h1 className="font-bebas text-3xl tracking-wide text-white sm:text-4xl">
         FINALIZAR PEDIDO
       </h1>

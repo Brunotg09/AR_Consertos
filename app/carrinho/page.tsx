@@ -1,21 +1,21 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { ServiceIcon } from "@/components/ServiceIcon";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/hooks/useAuth";
-import { ServiceIcon } from "@/components/ServiceIcon";
 import {
+  AlertTriangle,
+  ArrowRight,
+  Minus,
+  Package,
+  Plus,
   ShoppingCart,
   Trash2,
-  Minus,
-  Plus,
-  ArrowRight,
-  Package,
   Wrench,
-  AlertTriangle,
 } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function CarrinhoPage() {
   const router = useRouter();
@@ -41,7 +41,7 @@ export default function CarrinhoPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
       <div className="flex items-center gap-3">
         <ShoppingCart className="h-6 w-6" style={{ color: "#C9A84C" }} />
         <h1 className="font-bebas text-3xl tracking-wide text-white sm:text-4xl">
@@ -188,7 +188,7 @@ export default function CarrinhoPage() {
                 <span>Você precisa estar logado para finalizar. Seu carrinho será mantido.</span>
               </div>
             )}
-            <div className="mt-6 flex gap-3">
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={clearCart}
                 className="flex items-center gap-2 rounded-xl border border-white/10 px-5 py-3 text-sm font-medium text-white/70 transition-all hover:bg-white/[0.04]"

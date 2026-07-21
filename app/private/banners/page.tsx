@@ -440,6 +440,9 @@ export default function BannersPage() {
               <Label className="text-white/70">
                 Imagem {formData.icon_name ? "(opcional se usar ícone)" : "*"}
               </Label>
+              <p className="text-[10px] text-white/40">
+                Tamanho ideal: <strong className="text-white/60">1920x800px</strong> (proporção 2.4:1) · Formato WebP ou JPG · Máx. 200KB · Conteúdo importante no centro
+              </p>
 
               {formImage ? (
                 <div className="relative group">

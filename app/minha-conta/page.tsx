@@ -1,24 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
-  User,
-  Mail,
-  Phone,
+  AlertTriangle,
+  ArrowRight,
   Calendar,
-  MapPin,
   Camera,
   Lock,
+  LogOut,
+  MapPin,
+  Phone,
   Save,
   Trash2,
-  AlertTriangle,
-  X,
-  Check,
-  ArrowRight,
-  LogOut,
+  User,
+  X
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 interface Profile {
   id: string;
@@ -266,7 +264,7 @@ export default function MinhaContaPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6 lg:px-8">
       <div className="flex items-center justify-between">
         <h1 className="font-bebas text-4xl tracking-widest text-white">
           MINHA CONTA

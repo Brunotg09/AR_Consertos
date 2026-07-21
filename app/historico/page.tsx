@@ -1,24 +1,22 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { generateOSPDF, type PDFOrder } from "@/lib/generateOSPDF";
-import { ServiceIcon } from "@/components/ServiceIcon";
+import { supabase } from "@/lib/supabase";
 import {
-  Wrench,
-  ShoppingCart,
+  AlertTriangle,
   CheckCircle,
   Clock,
-  AlertTriangle,
-  ShieldCheck,
-  ShieldOff,
   FileText,
   Filter,
-  Package,
   Loader2,
+  ShieldCheck,
+  ShieldOff,
+  ShoppingCart,
+  Wrench
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
 interface OrderItem {
   item_id: number;
@@ -181,7 +179,7 @@ export default function HistoricoPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-12">
       <div className="flex items-center gap-3">
         <FileText className="h-6 w-6" style={{ color: "#C9A84C" }} />
         <h1 className="font-bebas text-3xl tracking-wide text-white sm:text-4xl">
