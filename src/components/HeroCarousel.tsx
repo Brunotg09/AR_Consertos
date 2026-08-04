@@ -1,10 +1,13 @@
 "use client";
 
 import { supabase } from "@/lib/supabase";
-import { Award, Cpu, Wrench, Zap, Settings, ArrowRight } from "lucide-react";
+import { ArrowRight, Award, Cpu, Settings, Wrench, Zap } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-const iconMap: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
+const iconMap: Record<
+  string,
+  React.ComponentType<{ className?: string; style?: React.CSSProperties }>
+> = {
   Wrench,
   Cpu,
   Award,
@@ -71,7 +74,7 @@ export function HeroCarousel() {
   const accent = currentBanner?.accent_color || "#E30613";
 
   return (
-    <section className="relative overflow-hidden" style={{ backgroundColor: "#141414", isolation: "isolate" }}>
+    <section className="relative overflow-hidden">
       {/* Subtle radial glow behind carousel */}
       <div
         className="pointer-events-none absolute inset-0 opacity-30"
@@ -85,7 +88,9 @@ export function HeroCarousel() {
           {banners.map((banner, index) => {
             const isActive = index === current;
             const slideAccent = banner.accent_color || "#E30613";
-            const Icon = banner.icon_name ? iconMap[banner.icon_name] || Wrench : Wrench;
+            const Icon = banner.icon_name
+              ? iconMap[banner.icon_name] || Wrench
+              : Wrench;
             const hasImage = !!banner.image_url;
 
             return (
@@ -102,8 +107,12 @@ export function HeroCarousel() {
                     : "rgba(26, 26, 26, 0.6)",
                   backgroundSize: "cover",
                   backgroundPosition: "center",
-                  backdropFilter: hasImage ? "none" : "blur(20px) saturate(140%)",
-                  WebkitBackdropFilter: hasImage ? "none" : "blur(20px) saturate(140%)",
+                  backdropFilter: hasImage
+                    ? "none"
+                    : "blur(20px) saturate(140%)",
+                  WebkitBackdropFilter: hasImage
+                    ? "none"
+                    : "blur(20px) saturate(140%)",
                   borderColor: `${slideAccent}20`,
                   boxShadow: isActive
                     ? `0 0 60px ${slideAccent}10, 0 8px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)`
@@ -125,7 +134,10 @@ export function HeroCarousel() {
                 <h2 className="font-bebas text-3xl tracking-widest text-white sm:text-5xl lg:text-6xl drop-shadow-lg">
                   {banner.title || ""}
                 </h2>
-                <p className="mt-3 max-w-lg text-xs leading-relaxed sm:mt-4 sm:text-base drop-shadow-md" style={{ color: "#d0d0d0" }}>
+                <p
+                  className="mt-3 max-w-lg text-xs leading-relaxed sm:mt-4 sm:text-base drop-shadow-md"
+                  style={{ color: "#d0d0d0" }}
+                >
                   {banner.subtitle || ""}
                 </p>
                 {banner.link && (
@@ -158,7 +170,8 @@ export function HeroCarousel() {
                 style={{
                   width: index === current ? "2.5rem" : "0.5rem",
                   backgroundColor: index === current ? slideAccent : "#333333",
-                  boxShadow: index === current ? `0 0 10px ${slideAccent}60` : "none",
+                  boxShadow:
+                    index === current ? `0 0 10px ${slideAccent}60` : "none",
                 }}
                 aria-label={`Ir para slide ${index + 1}`}
               />

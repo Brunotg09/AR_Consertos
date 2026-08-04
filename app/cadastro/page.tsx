@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useFloatingWidget } from "@/components/FloatingWidget";
 import {
   User,
   Mail,
@@ -48,7 +49,10 @@ function passwordStrength(pw: string) {
 }
 
 export default function CadastroPage() {
+  const { trigger } = useFloatingWidget();
   const router = useRouter();
+
+  useEffect(() => { trigger("help"); }, [trigger]);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");

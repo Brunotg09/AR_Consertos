@@ -6,11 +6,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: 'AR Consertos - Conserto de Eletrodomésticos e Eletrônica',
+  title: "AR Consertos - Conserto de Eletrodomésticos e Eletrônica",
   description:
-    'AR Consertos em Itabaiana/SE. Conserto de eletrodomésticos, linha branca, eletrônica avançada inverter. Garantia de 90 dias. Desde 2017.',
+    "AR Consertos em Itabaiana/SE. Conserto de eletrodomésticos, linha branca, eletrônica avançada inverter. Garantia de 90 dias. Desde 2017.",
   alternates: {
-    canonical: 'https://ar-consertos.vercel.app',
+    canonical: "https://ar-consertos.vercel.app",
   },
 };
 
@@ -55,21 +55,41 @@ export default async function Home() {
       <HeroCarousel />
 
       {/* Seção O QUE CONSERTAMOS */}
-      <section className="relative overflow-hidden">
+      <section
+        className="relative overflow-hidden "
+        style={{ backgroundColor: "#141414" }}
+      >
         <div className="section-glow-red" />
+        <div
+          className="pointer-events-none absolute left-1/2 top-0 h-full w-full -translate-x-1/2 opacity-20 "
+          style={{
+            background:
+              "radial-gradient(ellipse 50% 40% at 0% 28%, #e7001b 0%, transparent 70%)",
+          }}
+        />
         <div className="mx-auto  max-w-full px-4 py-24 sm:px-6 lg:px-20 lg:py-32">
           <div className="max-w-2xl">
             <div className="flex items-center gap-3">
-              <div className="h-px w-10 rounded" style={{ backgroundColor: "#E30613" }} />
-              <span className="font-oswald text-[10px] tracking-widest uppercase" style={{ color: "#E30613" }}>
+              <div
+                className="h-px w-10 rounded"
+                style={{ backgroundColor: "#E30613" }}
+              />
+              <span
+                className="font-oswald text-[10px] tracking-widest uppercase"
+                style={{ color: "#E30613" }}
+              >
                 Serviços
               </span>
             </div>
             <h2 className="mt-4 font-bebas text-5xl tracking-widest text-white sm:text-6xl lg:text-7xl">
               O QUE CONSERTAMOS
             </h2>
-            <p className="mt-4 max-w-md text-sm leading-relaxed sm:text-base" style={{ color: "#a0a0a0" }}>
-              Serviços convencionais com garantia de 90 dias em Itabaiana/SE. Desde linha branca até ferramentas e entretenimento.
+            <p
+              className="mt-4 max-w-md text-sm leading-relaxed sm:text-base"
+              style={{ color: "#a0a0a0" }}
+            >
+              Serviços convencionais com garantia de 90 dias em Itabaiana/SE.
+              Desde linha branca até ferramentas e entretenimento.
             </p>
           </div>
 
@@ -80,7 +100,10 @@ export default async function Home() {
           </div>
 
           <div className="mt-16 text-center">
-            <Link href="/servicos" className="btn-premium-red inline-flex items-center gap-2">
+            <Link
+              href="/servicos"
+              className="btn-premium-red inline-flex items-center gap-2"
+            >
               Ver Todos os Serviços
               <ArrowRight className="h-4 w-4" />
             </Link>
@@ -89,34 +112,64 @@ export default async function Home() {
       </section>
 
       {/* Seção REPARO DE ELETRÔNICA INVERTER */}
-      <section className="relative overflow-hidden" style={{ backgroundColor: "#141414" }}>
+      <section
+        className="relative overflow-hidden "
+        style={{ backgroundColor: "#141414" }}
+      >
         <div className="section-glow-purple" />
         <div
-          className="pointer-events-none absolute left-1/2 top-0 h-[500px] w-full max-w-[800px] -translate-x-1/2 opacity-20"
-          style={{ background: "radial-gradient(ellipse 50% 40% at 50% 0%, #8B5CF6 0%, transparent 70%)" }}
+          className="pointer-events-none absolute left-1/2 top-0 h-full w-full -translate-x-1/2 opacity-20 "
+          style={{
+            background:
+              "radial-gradient(ellipse 50% 40% at 0% 28%, #8B5CF6 0%, transparent 70%)",
+          }}
         />
         <div className="relative mx-auto  max-w-full px-4 py-24 sm:px-6 lg:px-20 lg:py-32">
           <div className="max-w-2xl">
             <div className="flex items-center gap-3">
-              <div className="h-px w-10 rounded" style={{ backgroundColor: "#8B5CF6" }} />
-              <span className="font-oswald text-[10px] tracking-widest uppercase" style={{ color: "#8B5CF6" }}>
+              <div
+                className="h-px w-10 rounded"
+                style={{ backgroundColor: "#8B5CF6" }}
+              />
+              <span
+                className="font-oswald text-[10px] tracking-widest uppercase"
+                style={{ color: "#8B5CF6" }}
+              >
                 Tecnologia Avançada
               </span>
             </div>
             <h2 className="mt-4 font-bebas text-5xl tracking-widest text-white sm:text-6xl lg:text-7xl">
               REPARO DE ELETRÔNICA INVERTER
             </h2>
-            <p className="mt-4 max-w-md text-sm leading-relaxed sm:text-base" style={{ color: "#a0a0a0" }}>
-              Laboratório equipado para reparo em nível de componente. Placas de ar-condicionado inverter, inversores solares e fontes chaveadas.
+            <p
+              className="mt-4 max-w-md text-sm leading-relaxed sm:text-base"
+              style={{ color: "#a0a0a0" }}
+            >
+              Laboratório equipado para reparo em nível de componente. Placas de
+              ar-condicionado inverter, inversores solares e fontes chaveadas.
             </p>
           </div>
 
           <div className="mt-10 flex flex-wrap gap-3">
-            <div className="flex items-center gap-2 rounded-full border px-4 py-2 text-xs" style={{ borderColor: "rgba(139, 92, 246, 0.2)", color: "#a78bfa", backgroundColor: "rgba(139, 92, 246, 0.06)" }}>
+            <div
+              className="flex items-center gap-2 rounded-full border px-4 py-2 text-xs"
+              style={{
+                borderColor: "rgba(139, 92, 246, 0.2)",
+                color: "#a78bfa",
+                backgroundColor: "rgba(139, 92, 246, 0.06)",
+              }}
+            >
               <Cpu className="h-3.5 w-3.5" />
               <span>Diagnóstico em Laboratório</span>
             </div>
-            <div className="flex items-center gap-2 rounded-full border px-4 py-2 text-xs" style={{ borderColor: "rgba(139, 92, 246, 0.2)", color: "#a78bfa", backgroundColor: "rgba(139, 92, 246, 0.06)" }}>
+            <div
+              className="flex items-center gap-2 rounded-full border px-4 py-2 text-xs"
+              style={{
+                borderColor: "rgba(139, 92, 246, 0.2)",
+                color: "#a78bfa",
+                backgroundColor: "rgba(139, 92, 246, 0.06)",
+              }}
+            >
               <Wrench className="h-3.5 w-3.5" />
               <span>Reparo de Componentes SMD</span>
             </div>
@@ -124,12 +177,19 @@ export default async function Home() {
 
           <div className="mt-16 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {inverters.map((service) => (
-              <ServiceCard key={service.id} service={service} variant="inverter" />
+              <ServiceCard
+                key={service.id}
+                service={service}
+                variant="inverter"
+              />
             ))}
           </div>
 
           <div className="mt-16 text-center">
-            <Link href="/inverter" className="btn-premium-purple inline-flex items-center gap-2">
+            <Link
+              href="/inverter"
+              className="btn-premium-purple inline-flex items-center gap-2"
+            >
               Ver Todos Inverter
               <ArrowRight className="h-4 w-4" />
             </Link>
@@ -138,13 +198,22 @@ export default async function Home() {
       </section>
 
       {/* Produtos disponíveis */}
-      <section className="border-t border-white/5" style={{ backgroundColor: "#1a1a1a" }}>
+      <section
+        className="border-t border-white/5"
+        style={{ backgroundColor: "#1a1a1a" }}
+      >
         <div className="mx-auto  max-w-full px-4 py-24 sm:px-6 lg:px-20">
           <div className="flex items-center justify-between">
-    <div className="pb-10">
+            <div className="pb-10">
               <div className="flex items-center gap-3">
-                <div className="h-px w-10 rounded" style={{ backgroundColor: "#C9A84C" }} />
-                <span className="font-oswald text-[10px] tracking-widest uppercase" style={{ color: "#C9A84C" }}>
+                <div
+                  className="h-px w-10 rounded"
+                  style={{ backgroundColor: "#C9A84C" }}
+                />
+                <span
+                  className="font-oswald text-[10px] tracking-widest uppercase"
+                  style={{ color: "#C9A84C" }}
+                >
                   Loja
                 </span>
               </div>
@@ -174,28 +243,55 @@ export default async function Home() {
                       background: "rgba(34, 34, 34, 0.45)",
                       backdropFilter: "blur(16px) saturate(140%)",
                       border: "1px solid rgba(255,255,255,0.06)",
-                      boxShadow: "0 4px 20px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.04)",
+                      boxShadow:
+                        "0 4px 20px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.04)",
                     }}
                   >
                     <div className="relative h-[160px] w-full overflow-hidden">
                       {image ? (
-                        <img src={image} alt={p.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
+                        <img
+                          src={image}
+                          alt={p.name}
+                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          loading="lazy"
+                        />
                       ) : (
-                        <div className="flex h-full w-full items-center justify-center" style={{ backgroundColor: "rgba(255,255,255,0.03)" }}>
-                          <ShoppingBag className="h-8 w-8" style={{ color: "#444" }} />
+                        <div
+                          className="flex h-full w-full items-center justify-center"
+                          style={{ backgroundColor: "rgba(255,255,255,0.03)" }}
+                        >
+                          <ShoppingBag
+                            className="h-8 w-8"
+                            style={{ color: "#444" }}
+                          />
                         </div>
                       )}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                     </div>
                     <div className="p-4">
-                      <span className="text-[10px] uppercase tracking-wider" style={{ color: "#C9A84C" }}>{p.category || "Loja"}</span>
-                      <h3 className="mt-1 font-montserrat text-sm font-bold text-white">{p.name}</h3>
+                      <span
+                        className="text-[10px] uppercase tracking-wider"
+                        style={{ color: "#C9A84C" }}
+                      >
+                        {p.category || "Loja"}
+                      </span>
+                      <h3 className="mt-1 font-montserrat text-sm font-bold text-white">
+                        {p.name}
+                      </h3>
                       <div className="mt-2 flex items-center justify-between">
-                        <span className="font-oswald text-lg font-bold" style={{ color: "#E30613" }}>
+                        <span
+                          className="font-oswald text-lg font-bold"
+                          style={{ color: "#E30613" }}
+                        >
                           R$ {Number(p.price).toFixed(2).replace(".", ",")}
                         </span>
-                        <span className="text-[10px]" style={{ color: "#888888" }}>
-                          {p.stock > 0 ? `${p.stock} em estoque` : "Indisponível"}
+                        <span
+                          className="text-[10px]"
+                          style={{ color: "#888888" }}
+                        >
+                          {p.stock > 0
+                            ? `${p.stock} em estoque`
+                            : "Indisponível"}
                         </span>
                       </div>
                     </div>
@@ -206,9 +302,17 @@ export default async function Home() {
           ) : (
             <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="card-convencional flex flex-col items-center justify-center py-12 text-center">
-                  <div className="h-16 w-16 rounded-full" style={{ backgroundColor: "rgba(201,168,76,0.08)" }} />
-                  <p className="mt-4 text-sm" style={{ color: "#888888" }}>Produto em breve</p>
+                <div
+                  key={i}
+                  className="card-convencional flex flex-col items-center justify-center py-12 text-center"
+                >
+                  <div
+                    className="h-16 w-16 rounded-full"
+                    style={{ backgroundColor: "rgba(201,168,76,0.08)" }}
+                  />
+                  <p className="mt-4 text-sm" style={{ color: "#888888" }}>
+                    Produto em breve
+                  </p>
                 </div>
               ))}
             </div>
@@ -217,7 +321,10 @@ export default async function Home() {
       </section>
 
       {/* Stats */}
-      <section className="border-t border-white/5" style={{ backgroundColor: "#161616" }}>
+      <section
+        className="border-t border-white/5"
+        style={{ backgroundColor: "#161616" }}
+      >
         <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
             {[
@@ -230,7 +337,10 @@ export default async function Home() {
                 <div className="font-bebas text-4xl tracking-wider text-white sm:text-5xl">
                   {stat.value}
                 </div>
-                <div className="mt-1 text-xs tracking-wide uppercase" style={{ color: "#888888" }}>
+                <div
+                  className="mt-1 text-xs tracking-wide uppercase"
+                  style={{ color: "#888888" }}
+                >
                   {stat.label}
                 </div>
               </div>

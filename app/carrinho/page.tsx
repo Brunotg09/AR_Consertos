@@ -3,6 +3,7 @@
 import { ServiceIcon } from "@/components/ServiceIcon";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/hooks/useAuth";
+import { useFloatingWidget } from "@/components/FloatingWidget";
 import {
   AlertTriangle,
   ArrowRight,
@@ -21,6 +22,11 @@ export default function CarrinhoPage() {
   const router = useRouter();
   const { items, removeItem, updateProductQuantity, subtotal, clearCart } = useCart();
   const { user, loading: authLoading } = useAuth();
+  const { trigger } = useFloatingWidget();
+
+  useEffect(() => {
+    trigger("buy");
+  }, [trigger]);
 
   useEffect(() => {
     if (!authLoading && !user) {

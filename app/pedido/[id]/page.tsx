@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useFloatingWidget } from "@/components/FloatingWidget";
 import {
   CheckCircle,
   Package,
@@ -39,6 +40,7 @@ export default function PedidoConfirmacaoPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const { trigger } = useFloatingWidget();
 
   useEffect(() => {
     const fetchOrder = async () => {
@@ -63,7 +65,8 @@ export default function PedidoConfirmacaoPage() {
       setLoading(false);
     };
     fetchOrder();
-  }, [params.id]);
+    trigger("thanks");
+  }, [params.id, trigger]);
 
   const paymentIcons: Record<string, React.ReactNode> = {
     dinheiro: <Banknote className="h-4 w-4" />,

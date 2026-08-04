@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useCart } from "@/contexts/CartContext";
+import { useFloatingWidget } from "@/components/FloatingWidget";
 import {
   ShoppingCart,
   ChevronLeft,
@@ -28,8 +29,13 @@ export default function ProdutoDetalhePage() {
   const params = useParams();
   const router = useRouter();
   const { addProduct } = useCart();
+  const { trigger } = useFloatingWidget();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    trigger("buy");
+  }, [trigger]);
   const [currentImage, setCurrentImage] = useState(0);
   const [added, setAdded] = useState(false);
 

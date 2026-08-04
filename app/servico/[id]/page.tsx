@@ -3,6 +3,7 @@
 import { ServiceIcon } from "@/components/ServiceIcon";
 import { useCart } from "@/contexts/CartContext";
 import { supabase, withTimeout } from "@/lib/supabase";
+import { useFloatingWidget } from "@/components/FloatingWidget";
 import { ArrowLeft, Award, CalendarCheck, Loader2, Tag } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -26,8 +27,13 @@ export default function ServicoDetailPage() {
   const params = useParams();
   const id = params?.id as string;
   const { addService } = useCart();
+  const { trigger } = useFloatingWidget();
   const [service, setService] = useState<ServiceData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    trigger("schedule");
+  }, [trigger]);
 
   useEffect(() => {
     async function fetchService() {

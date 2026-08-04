@@ -1,6 +1,7 @@
 "use client";
 
 import { supabase } from "@/lib/supabase";
+import { useFloatingWidget } from "@/components/FloatingWidget";
 import {
   AlertTriangle,
   ArrowRight,
@@ -28,8 +29,11 @@ interface Profile {
 }
 
 export default function MinhaContaPage() {
+  const { trigger } = useFloatingWidget();
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
+
+  useEffect(() => { trigger("help"); }, [trigger]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");

@@ -24,6 +24,9 @@ import {
   CreditCard,
   Banknote,
   QrCode,
+  Camera,
+  Upload,
+  ImagePlus,
 } from "lucide-react";
 import { supabase, withTimeout } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -58,7 +61,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useServices } from "@/hooks/useServices";
-import { generateOSPDF } from "@/lib/generateOSPDF";
+import { generateOSPDF, generateSingleItemOSPDF } from "@/lib/generateOSPDF";
 
 // Types
 interface Cliente {
@@ -68,6 +71,7 @@ interface Cliente {
   email: string | null;
   cpf: string | null;
   endereco: { cidade?: string; estado?: string } | null;
+  user_id: string | null;
 }
 
 interface Product {
@@ -91,6 +95,7 @@ interface OrderItem {
   price: number | null;
   payment_method: string | null;
   payment_status: string;
+  status: string;
   payments: { date: string; amount: number; method: string; note?: string }[];
   amount_paid: number;
   scheduled_date: string | null;
@@ -100,6 +105,7 @@ interface OrderItem {
   warranty_expires_at: string | null;
   product_category: string | null;
   product_condition: string | null;
+  product_images: string[] | null;
 }
 
 interface Order {
@@ -184,6 +190,8 @@ export default function PedidosPage() {
   // Complete service form
   const [serviceDiagnosis, setServiceDiagnosis] = useState("");
   const [servicePrice, setServicePrice] = useState("");
+  const [servicePhotos, setServicePhotos] = useState<string[]>([]);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -227,7 +235,7 @@ export default function PedidosPage() {
       const result = await withTimeout(
         () => supabase
           .from("clientes")
-          .select("id, nome, telefone, email, cpf, endereco")
+          .select("id, nome, telefone, email, cpf, endereco, user_id")
           .order("nome"),
         8000,
         { data: [], error: null }
@@ -381,6 +389,67 @@ export default function PedidosPage() {
     }
   };
 
+  const updateItemStatus = async (item: OrderItem, newStatus: string) => {
+    try {
+      const updates: Record<string, any> = { status: newStatus };
+
+      if (newStatus === "concluido" && !item.completed_at) {
+        const completedAt = new Date();
+        const warrantyExpires = new Date(completedAt);
+        warrantyExpires.setDate(warrantyExpires.getDate() + 90);
+        updates.completed_at = completedAt.toISOString();
+        updates.warranty_expires_at = warrantyExpires.toISOString();
+      }
+
+      const { error } = await supabase
+        .from("order_items")
+        .update(updates)
+        .eq("id", item.id);
+
+      if (error) throw error;
+
+      // Update order status based on all items — use LOWEST status
+      const order = orders.find((o) => o.id === item.order_id);
+      if (order?.items) {
+        const updatedItems = order.items.map((i) =>
+          i.id === item.id ? { ...i, status: newStatus } : i
+        );
+        
+        const statusPriority = ["pendente", "confirmado", "em_andamento", "concluido"];
+        
+        // Filter out cancelled items
+        const activeItems = updatedItems.filter((i) => i.status !== "cancelado");
+        const allCancelled = activeItems.length === 0;
+        
+        let orderStatus = "pendente";
+        
+        if (allCancelled) {
+          orderStatus = "cancelado";
+        } else {
+          // Use LOWEST status among active items
+          orderStatus = "concluido";
+          for (const currItem of activeItems) {
+            const itemStatus = currItem.status || "pendente";
+            if (statusPriority.indexOf(itemStatus) < statusPriority.indexOf(orderStatus)) {
+              orderStatus = itemStatus;
+            }
+          }
+        }
+
+        await supabase
+          .from("orders")
+          .update({ status: orderStatus, updated_at: new Date().toISOString() })
+          .eq("id", item.order_id);
+      }
+
+      toast.success(`Item atualizado para ${getStatusLabel(newStatus)}`);
+      fetchOrders();
+    } catch (error) {
+      console.error("Error updating item status:", error);
+      toast.error("Erro ao atualizar status do item");
+    }
+  };
+
   // Create order
   const addServiceToOrder = (service: typeof servicesData[0]) => {
     setOrderItems([
@@ -446,6 +515,7 @@ export default function PedidosPage() {
     setSaving(true);
     try {
       let clienteId = selectedCliente?.id;
+      let userId = selectedCliente?.user_id || null;
 
       // Create new client if needed
       if (!clienteId && showNewClientForm) {
@@ -471,11 +541,12 @@ export default function PedidosPage() {
         return sum;
       }, 0);
 
-      // Create order
+      // Create order with both cliente_id and user_id
       const { data: order, error: orderError } = await supabase
         .from("orders")
         .insert([{
           cliente_id: clienteId,
+          user_id: userId,
           status: "pendente",
           payment_method: orderPaymentMethod || null,
           total,
@@ -612,19 +683,67 @@ export default function PedidosPage() {
     setSelectedItem(item);
     setServiceDiagnosis(item.diagnosis || "");
     setServicePrice(item.price?.toString() || "");
+    setServicePhotos(item.product_images || []);
     setCompleteServiceDialogOpen(true);
   };
 
-  const handleCompleteService = async () => {
+  // Save diagnosis/price/photos WITHOUT completing
+  const handleSaveServiceDetails = async () => {
     if (!selectedItem || !selectedOrder) return;
 
     if (!serviceDiagnosis.trim()) {
-      toast.error("Diagnóstico é obrigatório");
+      toast.error("Preencha o diagnóstico");
       return;
     }
 
     if (!servicePrice || parseFloat(servicePrice) <= 0) {
-      toast.error("Preço do serviço é obrigatório");
+      toast.error("Preencha o preço do serviço");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("order_items")
+        .update({
+          diagnosis: serviceDiagnosis,
+          price: parseFloat(servicePrice),
+          product_images: servicePhotos.length > 0 ? servicePhotos : null,
+        })
+        .eq("id", selectedItem.id);
+
+      if (error) throw error;
+
+      // Update order total
+      const orderTotal = (selectedOrder.items || [])
+        .filter(i => i.id !== selectedItem.id)
+        .reduce((sum, i) => sum + (i.price || 0) * i.quantity, 0)
+        + parseFloat(servicePrice) * selectedItem.quantity;
+
+      await supabase
+        .from("orders")
+        .update({ total: orderTotal })
+        .eq("id", selectedOrder.id);
+
+      toast.success("Dados salvos com sucesso");
+      setCompleteServiceDialogOpen(false);
+      fetchOrders();
+    } catch (error) {
+      console.error("Error saving service details:", error);
+      toast.error("Erro ao salvar dados");
+    }
+  };
+
+  // Complete service (mark as done)
+  const handleCompleteService = async () => {
+    if (!selectedItem || !selectedOrder) return;
+
+    if (!serviceDiagnosis.trim()) {
+      toast.error("Preencha o diagnóstico antes de concluir");
+      return;
+    }
+
+    if (!servicePrice || parseFloat(servicePrice) <= 0) {
+      toast.error("Preencha o preço antes de concluir");
       return;
     }
 
@@ -638,6 +757,7 @@ export default function PedidosPage() {
         .update({
           diagnosis: serviceDiagnosis,
           price: parseFloat(servicePrice),
+          product_images: servicePhotos.length > 0 ? servicePhotos : null,
           completed_at: completedAt.toISOString(),
           warranty_expires_at: warrantyExpires.toISOString(),
         })
@@ -656,13 +776,56 @@ export default function PedidosPage() {
         .update({ total: orderTotal })
         .eq("id", selectedOrder.id);
 
-      toast.success("Serviço concluído");
+      toast.success("Serviço concluído com sucesso");
       setCompleteServiceDialogOpen(false);
       fetchOrders();
     } catch (error) {
       console.error("Error completing service:", error);
       toast.error("Erro ao concluir serviço");
     }
+  };
+
+  // Upload photo for service
+  const handleUploadServicePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (servicePhotos.length >= 4) {
+      toast.error("Máximo de 4 fotos por serviço");
+      return;
+    }
+
+    setUploadingPhoto(true);
+    try {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `service-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${fileExt}`;
+      const filePath = `service-photos/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("products")
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from("products")
+        .getPublicUrl(filePath);
+
+      if (urlData?.publicUrl) {
+        setServicePhotos([...servicePhotos, urlData.publicUrl]);
+        toast.success("Foto adicionada");
+      }
+    } catch (error) {
+      console.error("Error uploading photo:", error);
+      toast.error("Erro ao enviar foto");
+    } finally {
+      setUploadingPhoto(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleRemoveServicePhoto = (index: number) => {
+    setServicePhotos(servicePhotos.filter((_, i) => i !== index));
   };
 
   // Delete handlers
@@ -726,6 +889,35 @@ export default function PedidosPage() {
     };
 
     generateOSPDF(pdfData, order.cliente?.nome || "Cliente");
+  };
+
+  const handlePrintItemOS = (order: Order, item: OrderItem) => {
+    const pdfData = {
+      order_id: order.id,
+      order_status: order.status,
+      order_payment_method: order.payment_method,
+      order_total: order.total,
+      order_created_at: order.created_at,
+      items: [],
+    };
+
+    const pdfItem = {
+      item_type: item.item_type,
+      item_name: item.item_name,
+      item_service_type: item.service_type,
+      item_quantity: item.quantity,
+      item_price: item.price,
+      item_payment_status: item.payment_status,
+      item_amount_paid: item.amount_paid,
+      item_problem_description: item.problem_description,
+      item_diagnosis: item.diagnosis,
+      item_completed_at: item.completed_at,
+      item_warranty_expires_at: item.warranty_expires_at,
+      item_product_category: item.product_category,
+      item_product_condition: item.product_condition,
+    };
+
+    generateSingleItemOSPDF(pdfData, pdfItem, order.cliente?.nome || "Cliente");
   };
 
   return (
@@ -893,7 +1085,30 @@ export default function PedidosPage() {
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {/* Item Status */}
+                                <Select
+                                  value={item.status || "pendente"}
+                                  onValueChange={(value) => updateItemStatus(item, value)}
+                                >
+                                  <SelectTrigger
+                                    className="h-6 w-auto min-w-[90px] rounded-full border-0 px-2 py-0 text-[10px] font-bold"
+                                    style={{
+                                      backgroundColor: `${getStatusColor(item.status || "pendente").split(" ")[0].replace("bg-", "").replace("/20", "")}20`,
+                                      color: getStatusColor(item.status || "pendente").split(" ")[1].replace("text-", ""),
+                                    }}
+                                  >
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="bg-[#1a1a1a] border-white/10">
+                                    <SelectItem value="pendente" className="text-white text-xs">Pendente</SelectItem>
+                                    <SelectItem value="confirmado" className="text-white text-xs">Confirmado</SelectItem>
+                                    <SelectItem value="em_andamento" className="text-white text-xs">Em Andamento</SelectItem>
+                                    <SelectItem value="concluido" className="text-white text-xs">Concluído</SelectItem>
+                                    <SelectItem value="cancelado" className="text-white text-xs text-red-400">Cancelado</SelectItem>
+                                  </SelectContent>
+                                </Select>
+
                                 {/* Payment Status */}
                                 {item.item_type === "servico" && (
                                   <>
@@ -916,12 +1131,20 @@ export default function PedidosPage() {
                                 )}
 
                                 {/* Actions */}
-                                {item.item_type === "servico" && !isCompleted && item.price && (
+                                {item.item_type === "servico" && !isCompleted && (
                                   <button
                                     onClick={() => openCompleteServiceDialog(order, item)}
-                                    className="rounded bg-green-500/20 px-2 py-1 text-xs text-green-400 hover:bg-green-500/30"
+                                    className="rounded bg-blue-500/20 px-2 py-1 text-xs text-blue-400 hover:bg-blue-500/30"
                                   >
-                                    Concluir
+                                    {item.price ? "Editar Dados" : "Incluir Dados"}
+                                  </button>
+                                )}
+                                {item.item_type === "servico" && isCompleted && (
+                                  <button
+                                    onClick={() => openCompleteServiceDialog(order, item)}
+                                    className="rounded bg-blue-500/20 px-2 py-1 text-xs text-blue-400 hover:bg-blue-500/30"
+                                  >
+                                    Editar
                                   </button>
                                 )}
                                 {item.item_type === "servico" && !isPaid && item.price && (
@@ -932,6 +1155,14 @@ export default function PedidosPage() {
                                     Pagamento
                                   </button>
                                 )}
+                                {/* O.S. individual */}
+                                <button
+                                  onClick={() => handlePrintItemOS(order, item)}
+                                  className="rounded bg-white/[0.06] px-2 py-1 text-xs text-white/60 hover:bg-white/[0.1] hover:text-white"
+                                  title="Gerar O.S. deste item"
+                                >
+                                  📄 O.S.
+                                </button>
                                 {isCompleted && (
                                   <span className="text-xs text-green-400">
                                     Garantia até {format(new Date(item.warranty_expires_at!), "dd/MM/yyyy")}
@@ -939,6 +1170,20 @@ export default function PedidosPage() {
                                 )}
                               </div>
                             </div>
+
+                            {/* Service Photos */}
+                            {item.item_type === "servico" && item.product_images && item.product_images.length > 0 && (
+                              <div className="mt-2 flex gap-1.5">
+                                {item.product_images.map((img, idx) => (
+                                  <img
+                                    key={idx}
+                                    src={img}
+                                    alt={`Foto ${idx + 1}`}
+                                    className="h-14 w-14 rounded-lg object-cover border border-white/10"
+                                  />
+                                ))}
+                              </div>
+                            )}
 
                             {/* Payment History */}
                             {item.payments && item.payments.length > 0 && (
@@ -983,10 +1228,10 @@ export default function PedidosPage() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => handlePrintOS(order)}
-                          className="flex items-center gap-1 rounded-lg bg-white/[0.04] px-3 py-2 text-sm text-white/70 hover:bg-white/[0.08]"
+                          className="flex items-center gap-1 rounded-lg bg-green-500/10 px-3 py-2 text-sm text-green-400 hover:bg-green-500/20"
                         >
                           <Printer className="h-4 w-4" />
-                          <span className="hidden sm:inline">Imprimir O.S.</span>
+                          <span className="hidden sm:inline">O.S. Geral</span>
                         </button>
                         <button
                           onClick={() => openDeleteOrderDialog(order)}
@@ -1389,9 +1634,11 @@ export default function PedidosPage() {
 
       {/* Complete Service Dialog */}
       <Dialog open={completeServiceDialogOpen} onOpenChange={setCompleteServiceDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-white">Concluir Serviço</DialogTitle>
+            <DialogTitle className="text-white">
+              {selectedItem?.completed_at ? "Editar Serviço" : "Dados do Serviço"}
+            </DialogTitle>
           </DialogHeader>
 
           {selectedItem && (
@@ -1402,6 +1649,7 @@ export default function PedidosPage() {
               </div>
 
               <div className="space-y-3">
+                {/* Diagnóstico */}
                 <div className="space-y-2">
                   <Label className="text-white/70">Diagnóstico *</Label>
                   <Textarea
@@ -1409,10 +1657,11 @@ export default function PedidosPage() {
                     onChange={(e) => setServiceDiagnosis(e.target.value)}
                     placeholder="Descreva o diagnóstico do aparelho..."
                     className="rounded-xl border-white/10 bg-white/[0.02] text-white"
-                    required
+                    rows={3}
                   />
                 </div>
 
+                {/* Preço */}
                 <div className="space-y-2">
                   <Label className="text-white/70">Preço do Serviço *</Label>
                   <Input
@@ -1422,20 +1671,70 @@ export default function PedidosPage() {
                     onChange={(e) => setServicePrice(e.target.value)}
                     placeholder="0,00"
                     className="rounded-xl border-white/10 bg-white/[0.02] text-white"
-                    required
                   />
                 </div>
 
-                <div className="rounded-lg bg-green-500/10 p-3">
-                  <p className="text-xs text-green-400">
-                    Ao concluir, o serviço receberá garantia de 90 dias automáticamenta calculada.
-                  </p>
+                {/* Fotos */}
+                <div className="space-y-2">
+                  <Label className="text-white/70">Fotos do Aparelho</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {servicePhotos.map((photo, idx) => (
+                      <div key={idx} className="relative h-20 w-20">
+                        <img
+                          src={photo}
+                          alt={`Foto ${idx + 1}`}
+                          className="h-full w-full rounded-lg object-cover border border-white/10"
+                        />
+                        <button
+                          onClick={() => handleRemoveServicePhoto(idx)}
+                          className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                    {servicePhotos.length < 4 && (
+                      <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-white/20 hover:border-white/40 transition-colors">
+                        {uploadingPhoto ? (
+                          <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                        ) : (
+                          <>
+                            <Camera className="h-5 w-5 text-white/40" />
+                            <span className="mt-1 text-[9px] text-white/40">Foto</span>
+                          </>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleUploadServicePhoto}
+                          disabled={uploadingPhoto}
+                        />
+                      </label>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-white/30">Máximo 4 fotos</p>
                 </div>
+
+                {!selectedItem.completed_at && (
+                  <div className="rounded-lg bg-blue-500/10 p-3">
+                    <p className="text-xs text-blue-400">
+                      Salve os dados primeiro. Depois clique em "Concluir" quando o serviço estiver pronto.
+                    </p>
+                  </div>
+                )}
+                {selectedItem.completed_at && (
+                  <div className="rounded-lg bg-green-500/10 p-3">
+                    <p className="text-xs text-green-400">
+                      Serviço já concluído. Edite os dados se necessário.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button
               variant="outline"
               onClick={() => setCompleteServiceDialogOpen(false)}
@@ -1444,11 +1743,19 @@ export default function PedidosPage() {
               Cancelar
             </Button>
             <Button
-              onClick={handleCompleteService}
-              className="rounded-xl bg-green-500 text-white hover:bg-green-500/90"
+              onClick={handleSaveServiceDetails}
+              className="rounded-xl bg-blue-600 text-white hover:bg-blue-600/90"
             >
-              Concluir Serviço
+              Salvar Dados
             </Button>
+            {!selectedItem?.completed_at && (
+              <Button
+                onClick={handleCompleteService}
+                className="rounded-xl bg-green-500 text-white hover:bg-green-500/90"
+              >
+                Concluir
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -4,6 +4,7 @@ import { ServiceIcon } from "@/components/ServiceIcon";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
+import { useFloatingWidget } from "@/components/FloatingWidget";
 import {
   AlertTriangle,
   ArrowRight,
@@ -23,6 +24,11 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { items, subtotal, clearCart } = useCart();
   const { user, loading: authLoading } = useAuth();
+  const { trigger } = useFloatingWidget();
+
+  useEffect(() => {
+    trigger("buy");
+  }, [trigger]);
 
   const hasService = items.some((i) => i.type === "service");
   const hasProduct = items.some((i) => i.type === "product");
@@ -65,11 +71,49 @@ export default function CheckoutPage() {
 
     setLoading(true);
 
-    // 1. Criar pedido
+    // 1. Find or create client record for this user
+    let clienteId: number | null = null;
+
+    // Try to find existing client linked to this user
+    const { data: existingClient } = await supabase
+      .from("clientes")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (existingClient) {
+      clienteId = existingClient.id;
+    } else {
+      // Get user profile to create a client record
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name, phone")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profile) {
+        const { data: newClient } = await supabase
+          .from("clientes")
+          .insert({
+            nome: profile.full_name || "Cliente",
+            telefone: profile.phone || null,
+            user_id: user.id,
+          })
+          .select("id")
+          .single();
+
+        if (newClient) {
+          clienteId = newClient.id;
+        }
+      }
+    }
+
+    // 2. Criar pedido with both user_id and cliente_id
     const { data: orderData, error: orderError } = await supabase
       .from("orders")
       .insert({
         user_id: user.id,
+        cliente_id: clienteId,
         payment_method: paymentMethod,
         total: subtotal,
         status: "pendente",
@@ -85,7 +129,7 @@ export default function CheckoutPage() {
 
     const orderId = orderData.id;
 
-    // 2. Criar order_items
+    // 3. Criar order_items
     const orderItems = items.map((item) => {
       if (item.type === "service") {
         return {
