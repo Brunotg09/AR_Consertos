@@ -16,30 +16,42 @@ export const metadata: Metadata = {
 
 async function getServices() {
   try {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("services")
       .select("*")
       .eq("active", true)
       .order("sort_order", { ascending: true });
+    if (error) {
+      console.error("Error fetching services:", error);
+      return [];
+    }
     return data || [];
-  } catch {
+  } catch (err) {
+    console.error("Error fetching services:", err);
     return [];
   }
 }
 
 async function getProducts() {
   try {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("products")
       .select("*")
       .eq("active", true)
       .order("id", { ascending: false })
       .limit(4);
+    if (error) {
+      console.error("Error fetching products:", error);
+      return [];
+    }
     return data || [];
-  } catch {
+  } catch (err) {
+    console.error("Error fetching products:", err);
     return [];
   }
 }
+
+export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const allServices = await getServices();

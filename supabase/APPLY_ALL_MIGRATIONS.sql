@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS products (
   condition text CHECK (condition IN ('novo', 'usado', 'recondicionado')),
   images text[],
   active boolean DEFAULT true,
-  created_at timestamptz DEFAULT now()
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS orders (
@@ -86,11 +87,15 @@ CREATE TABLE IF NOT EXISTS banners (
   id serial PRIMARY KEY,
   title text,
   subtitle text,
-  image_url text NOT NULL,
+  image_url text,
   link text,
   active boolean DEFAULT true,
   sort_order int DEFAULT 0,
-  created_at timestamptz DEFAULT now()
+  accent_color text DEFAULT '#E30613',
+  cta_label text DEFAULT 'Saiba Mais',
+  icon_name text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS hidden_services (
@@ -321,7 +326,7 @@ CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = ''
+SET search_path = 'public'
 AS $$
 BEGIN
   IF auth.uid() IS NULL THEN
@@ -641,6 +646,27 @@ CREATE TRIGGER on_message_update_session
   FOR EACH ROW
   EXECUTE FUNCTION update_session_timestamp();
 
+-- Updated_at triggers for banners and products
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS banners_updated_at ON banners;
+CREATE TRIGGER banners_updated_at
+  BEFORE UPDATE ON banners
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS products_updated_at ON products;
+CREATE TRIGGER products_updated_at
+  BEFORE UPDATE ON products
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
 -- ============================================================
 -- 6. STORAGE
 -- ============================================================
@@ -708,6 +734,36 @@ CREATE POLICY "Product delete admin"
 ON storage.objects FOR DELETE
 TO authenticated
 USING (bucket_id = 'products' AND is_admin());
+
+-- Banners
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('banners', 'banners', true)
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "Banner public read" ON storage.objects;
+CREATE POLICY "Banner public read"
+ON storage.objects FOR SELECT
+TO anon, authenticated
+USING (bucket_id = 'banners');
+
+DROP POLICY IF EXISTS "Banner insert admin" ON storage.objects;
+CREATE POLICY "Banner insert admin"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (bucket_id = 'banners' AND is_admin());
+
+DROP POLICY IF EXISTS "Banner update admin" ON storage.objects;
+CREATE POLICY "Banner update admin"
+ON storage.objects FOR UPDATE
+TO authenticated
+USING (bucket_id = 'banners' AND is_admin())
+WITH CHECK (bucket_id = 'banners' AND is_admin());
+
+DROP POLICY IF EXISTS "Banner delete admin" ON storage.objects;
+CREATE POLICY "Banner delete admin"
+ON storage.objects FOR DELETE
+TO authenticated
+USING (bucket_id = 'banners' AND is_admin());
 
 -- ============================================================
 -- 7. GRANTS

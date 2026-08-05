@@ -36,6 +36,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -1255,6 +1256,9 @@ export default function PedidosPage() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-white">Novo Pedido</DialogTitle>
+            <DialogDescription className="text-white/60">
+              Crie um novo pedido para um cliente
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-6">
@@ -1557,6 +1561,9 @@ export default function PedidosPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-white">Adicionar Pagamento</DialogTitle>
+            <DialogDescription className="text-white/60">
+              Registre um novo pagamento para este item
+            </DialogDescription>
           </DialogHeader>
 
           {selectedItem && (
@@ -1639,6 +1646,11 @@ export default function PedidosPage() {
             <DialogTitle className="text-white">
               {selectedItem?.completed_at ? "Editar Serviço" : "Dados do Serviço"}
             </DialogTitle>
+            <DialogDescription className="text-white/60">
+              {selectedItem?.completed_at
+                ? "Atualize os dados deste serviço concluído"
+                : "Preencha os detalhes do serviço"}
+            </DialogDescription>
           </DialogHeader>
 
           {selectedItem && (

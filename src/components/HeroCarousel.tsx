@@ -45,9 +45,13 @@ export function HeroCarousel() {
       if (data && data.length > 0) {
         setBanners(data);
       }
-    } catch (error) {
-      console.error("Error fetching banners:", error);
-    } finally {
+      } catch (error) {
+        const err = error as { message?: string };
+        console.error("Error fetching banners:", err);
+        if (err?.message?.includes("relation") || err?.message?.includes("not found")) {
+          console.warn("Banners table may not exist or migrations not applied yet.");
+        }
+      } finally {
       setLoading(false);
     }
   }, []);

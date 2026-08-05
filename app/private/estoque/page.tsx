@@ -16,9 +16,11 @@ import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -55,6 +57,19 @@ interface Product {
 }
 
 const PRODUCT_CONDITIONS = ["novo", "usado", "recondicionado"];
+
+function extractStoragePath(url: string | null, bucket: string): string | null {
+  if (!url) return null;
+  const match = url.match(`/storage/v1/object/public/${bucket}/(.+)`);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+async function deleteImageFromStorage(bucket: string, url: string | null) {
+  if (!url) return;
+  const path = extractStoragePath(url, bucket);
+  if (!path) return;
+  await supabase.storage.from(bucket).remove([path]);
+}
 
 export default function EstoquePage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -126,6 +141,11 @@ export default function EstoquePage() {
     setEditDialogOpen(true);
   };
 
+  const closeDialog = () => {
+    setEditDialogOpen(false);
+    resetForm();
+  };
+
   const openEditDialog = (product: Product) => {
     setSelectedProduct(product);
     setFormData({
@@ -181,7 +201,11 @@ export default function EstoquePage() {
     }
   };
 
-  const removeImage = (index: number) => {
+  const removeImage = async (index: number) => {
+    const imgToDelete = formImages[index];
+    if (imgToDelete) {
+      await deleteImageFromStorage("products", imgToDelete);
+    }
     setFormImages(formImages.filter((_, i) => i !== index));
   };
 
@@ -208,18 +232,28 @@ export default function EstoquePage() {
           .update(productData)
           .eq("id", selectedProduct.id);
         if (error) throw error;
+
+        // Remove imagens antigas que nao estao mais no formulario
+        const oldImages = selectedProduct.images || [];
+        const keptImages = formImages;
+        const imagesToDelete = oldImages.filter((img) => !keptImages.includes(img));
+        for (const img of imagesToDelete) {
+          await deleteImageFromStorage("products", img);
+        }
+        toast.success("Produto atualizado com sucesso");
       } else {
-        // Create
         const { error } = await supabase.from("products").insert([productData]);
         if (error) throw error;
+        toast.success("Produto criado com sucesso");
       }
 
-      setEditDialogOpen(false);
-      resetForm();
+      closeDialog();
       fetchProducts();
     } catch (error) {
+      const err = error as { message?: string };
+      const msg = err?.message || "Erro ao salvar produto";
       console.error("Error saving product:", error);
-      alert("Erro ao salvar produto");
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -235,12 +269,21 @@ export default function EstoquePage() {
         .eq("id", selectedProduct.id);
       if (error) throw error;
 
+      // Remove imagens do storage
+      const imgs = selectedProduct.images || [];
+      for (const img of imgs) {
+        await deleteImageFromStorage("products", img);
+      }
+
+      toast.success(`Produto "${selectedProduct.name}" excluído`);
       setDeleteDialogOpen(false);
       setSelectedProduct(null);
       fetchProducts();
     } catch (error) {
+      const err = error as { message?: string };
+      const msg = err?.message || "Erro ao excluir produto";
       console.error("Error deleting product:", error);
-      alert("Erro ao excluir produto");
+      toast.error(msg);
     }
   };
 
@@ -396,12 +439,17 @@ export default function EstoquePage() {
       </div>
 
       {/* Create/Edit Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+      <Dialog open={editDialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-white">
               {selectedProduct ? "Editar Produto" : "Novo Produto"}
             </DialogTitle>
+            <DialogDescription className="text-white/60">
+              {selectedProduct
+                ? "Atualize as informações deste produto"
+                : "Cadastre um novo produto no estoque"}
+            </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -551,7 +599,7 @@ export default function EstoquePage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setEditDialogOpen(false)}
+                onClick={() => closeDialog()}
                 className="rounded-xl border-white/10 text-white/70"
               >
                 Cancelar

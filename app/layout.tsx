@@ -1,8 +1,10 @@
 import { ChatProvider } from "@/components/ChatProvider";
 import { ConditionalLayout } from "@/components/ConditionalLayout";
+import { Toaster } from "@/components/ui/sonner";
 import { CartProvider } from "@/contexts/CartContext";
 import { OfflineBanner } from "@/hooks/useOffline";
 import type { Metadata } from "next";
+import { ThemeProvider } from "next-themes";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -94,7 +96,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR" className="overflow-x-hidden">
+    <html lang="pt-BR" className="overflow-x-hidden" suppressHydrationWarning>
       <head>
         <meta
           name="viewport"
@@ -149,12 +151,15 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen flex flex-col overflow-x-hidden">
-        <OfflineBanner />
-        <CartProvider>
-          <ChatProvider>
-            <ConditionalLayout>{children}</ConditionalLayout>
-          </ChatProvider>
-        </CartProvider>
+        <ThemeProvider attribute="class" defaultTheme="dark">
+          <OfflineBanner />
+          <CartProvider>
+            <ChatProvider>
+              <ConditionalLayout>{children}</ConditionalLayout>
+            </ChatProvider>
+          </CartProvider>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

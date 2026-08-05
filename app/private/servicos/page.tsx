@@ -26,6 +26,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -387,6 +388,9 @@ export default function ServicosAdminPage() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-white">Editar Serviço</DialogTitle>
+            <DialogDescription className="text-white/60">
+              Atualize as informações deste serviço
+            </DialogDescription>
           </DialogHeader>
 
           {selectedService && (

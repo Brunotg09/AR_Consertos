@@ -1,15 +1,14 @@
 -- ============================================================
--- Fix is_admin: remover checagem de email que causa 404 em operacoes
--- de escrita no painel admin.
+-- Migration: Fix is_admin() inconsistency causing 404 on writes
 --
--- PROBLEMA: A migration 20260709 agregou `email LIKE '%@arconsertos.com.br'`
--- na funcao is_admin(), mas o layout /private/layout.tsx verifica
--- admin apenas por existencia em user_private (sem checar email).
--- Isso criou inconsistencia: usuario acessa o painel mas nao consegue
--- salvar/editar/deletar (RLS retorna 404).
+-- The migration 20260709073157 added `email LIKE '%@arconsertos.com.br'`
+-- to is_admin(), but /private/layout.tsx checks admin access solely by
+-- user existence in user_private (no email check). This mismatch allows
+-- users to enter the admin panel but blocks all write operations (RLS
+-- returns 404 for anon-invisible resources).
 --
--- SOLUCAO: is_admin() volta a verificar apenas a existencia em user_private,
--- mantendo consistencia com a verificacao feita no layout admin.
+-- This migration restores is_admin() to check only user_private existence,
+-- keeping it consistent with the admin layout access check.
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.is_admin()
@@ -28,13 +27,11 @@ BEGIN
 END;
 $$;
 
--- Garantir que authenticated pode executar a funcao
 GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.is_admin() TO anon;
 GRANT EXECUTE ON FUNCTION public.is_admin() TO service_role;
 
--- Tambem atualizar as funcoes de estoque gerenciado para nao exigir email
--- (mantem apenas a checagem de user_private, consistente com is_admin)
+-- Restore managed stock functions to use user_private check (consistent with is_admin)
 CREATE OR REPLACE FUNCTION public.managed_decrement_stock(product_id integer, qty integer)
 RETURNS void
 LANGUAGE plpgsql
@@ -68,8 +65,10 @@ GRANT EXECUTE ON FUNCTION public.managed_increment_stock(integer, integer) TO au
 
 -- ============================================================
 -- Fix services policy: replace email LIKE check with is_admin()
--- The "Admin manage services" policy used a direct email check
--- that is inconsistent with the admin layout's check.
+-- The "Admin manage services" policy (from migration
+-- 20260718120000_create_services_table.sql) used a direct
+-- email check that is inconsistent with the admin layout's
+-- access check and the rest of the codebase.
 -- ============================================================
 DROP POLICY IF EXISTS "Admin manage services" ON services;
 CREATE POLICY "Admin manage services" ON services FOR ALL

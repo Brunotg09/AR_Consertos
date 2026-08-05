@@ -68,15 +68,13 @@ export function useServices(options?: { activeOnly?: boolean; type?: string }) {
 
   const addService = async (service: Omit<ServiceItem, "id" | "created_at" | "updated_at">) => {
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("services")
-        .insert([service])
-        .select()
-        .single();
+        .insert([service]);
 
       if (error) throw error;
-      setServices((prev) => [...prev, data].sort((a, b) => a.sort_order - b.sort_order));
-      return { data, error: null };
+      await fetchServices();
+      return { data: null, error: null };
     } catch (err) {
       console.error("Error adding service:", err);
       return { data: null, error: err instanceof Error ? err.message : "Erro ao adicionar serviço" };
@@ -85,18 +83,14 @@ export function useServices(options?: { activeOnly?: boolean; type?: string }) {
 
   const updateService = async (id: number, updates: Partial<ServiceItem>) => {
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("services")
         .update(updates)
-        .eq("id", id)
-        .select()
-        .single();
+        .eq("id", id);
 
       if (error) throw error;
-      setServices((prev) =>
-        prev.map((s) => (s.id === id ? data : s)).sort((a, b) => a.sort_order - b.sort_order)
-      );
-      return { data, error: null };
+      await fetchServices();
+      return { data: null, error: null };
     } catch (err) {
       console.error("Error updating service:", err);
       return { data: null, error: err instanceof Error ? err.message : "Erro ao atualizar serviço" };

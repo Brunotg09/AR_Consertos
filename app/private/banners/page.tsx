@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -47,6 +48,20 @@ interface Banner {
   cta_label: string;
   icon_name: string | null;
   created_at: string;
+  updated_at: string | null;
+}
+
+function extractStoragePath(url: string | null, bucket: string): string | null {
+  if (!url) return null;
+  const match = url.match(`/storage/v1/object/public/${bucket}/(.+)`);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+async function deleteFromStorage(bucket: string, url: string | null) {
+  if (!url) return;
+  const path = extractStoragePath(url, bucket);
+  if (!path) return;
+  await supabase.storage.from(bucket).remove([path]);
 }
 
 export default function BannersPage() {
@@ -112,6 +127,11 @@ export default function BannersPage() {
     setEditDialogOpen(true);
   };
 
+  const closeDialog = () => {
+    setEditDialogOpen(false);
+    resetForm();
+  };
+
   const openEditDialog = (banner: Banner) => {
     setSelectedBanner(banner);
     setFormData({
@@ -144,15 +164,15 @@ export default function BannersPage() {
       const fileName = `banner-${Date.now()}.${fileExt}`;
       const filePath = `banners/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("products")
-        .upload(filePath, file);
+       const { error: uploadError } = await supabase.storage
+         .from("banners")
+         .upload(filePath, file);
 
-      if (uploadError) throw uploadError;
+       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from("products")
-        .getPublicUrl(filePath);
+       const { data: { publicUrl } } = supabase.storage
+         .from("banners")
+         .getPublicUrl(filePath);
 
       setFormImage(publicUrl);
       toast.success("Imagem enviada com sucesso");
@@ -186,13 +206,20 @@ export default function BannersPage() {
         icon_name: formData.icon_name || null,
       };
 
-      if (selectedBanner) {
-        const { error } = await supabase
-          .from("banners")
-          .update(bannerData)
-          .eq("id", selectedBanner.id);
-        if (error) throw error;
-        toast.success("Banner atualizado");
+       if (selectedBanner) {
+         const { error } = await supabase
+           .from("banners")
+           .update(bannerData)
+           .eq("id", selectedBanner.id);
+         if (error) throw error;
+
+         // Remove imagem antiga do storage se ela foi substituida
+         const oldImage = selectedBanner.image_url;
+         const newImage = formImage || null;
+         if (oldImage && oldImage !== newImage) {
+           await deleteFromStorage("banners", oldImage);
+         }
+         toast.success("Banner atualizado");
       } else {
         const { error } = await supabase.from("banners").insert([bannerData]);
         if (error) throw error;
@@ -202,10 +229,12 @@ export default function BannersPage() {
       setEditDialogOpen(false);
       resetForm();
       fetchBanners();
-    } catch (error) {
-      console.error("Error saving banner:", error);
-      toast.error("Erro ao salvar banner");
-    } finally {
+     } catch (error) {
+       const err = error as { message?: string };
+       const msg = err?.message || "Erro ao salvar banner";
+       console.error("Error saving banner:", error);
+       toast.error(msg);
+     } finally {
       setSaving(false);
     }
   };
@@ -213,22 +242,27 @@ export default function BannersPage() {
   const handleDelete = async () => {
     if (!selectedBanner) return;
 
-    try {
-      const { error } = await supabase
-        .from("banners")
-        .delete()
-        .eq("id", selectedBanner.id);
+     try {
+       const { error } = await supabase
+         .from("banners")
+         .delete()
+         .eq("id", selectedBanner.id);
 
-      if (error) throw error;
+       if (error) throw error;
 
-      toast.success("Banner removido");
-      setDeleteDialogOpen(false);
-      setSelectedBanner(null);
-      fetchBanners();
-    } catch (error) {
-      console.error("Error deleting banner:", error);
-      toast.error("Erro ao excluir banner");
-    }
+       // Remove imagem do storage
+       await deleteFromStorage("banners", selectedBanner.image_url);
+
+       toast.success("Banner removido");
+       setDeleteDialogOpen(false);
+       setSelectedBanner(null);
+       fetchBanners();
+     } catch (error) {
+       const err = error as { message?: string };
+       const msg = err?.message || "Erro ao excluir banner";
+       console.error("Error deleting banner:", error);
+       toast.error(msg);
+     }
   };
 
   const toggleActive = async (banner: Banner) => {
@@ -243,8 +277,10 @@ export default function BannersPage() {
       toast.success(banner.active ? "Banner desativado" : "Banner ativado");
       fetchBanners();
     } catch (error) {
+      const err = error as { message?: string };
+      const msg = err?.message || "Erro ao atualizar banner";
       console.error("Error toggling banner:", error);
-      toast.error("Erro ao atualizar banner");
+      toast.error(msg);
     }
   };
 
@@ -257,23 +293,26 @@ export default function BannersPage() {
     const targetBanner = banners[targetIndex];
 
     try {
-      // Swap sort orders
-      await supabase
+      const { error: err1 } = await supabase
         .from("banners")
         .update({ sort_order: banner.sort_order })
         .eq("id", targetBanner.id);
+      if (err1) throw err1;
 
-      await supabase
+      const { error: err2 } = await supabase
         .from("banners")
         .update({ sort_order: targetBanner.sort_order })
         .eq("id", banner.id);
+      if (err2) throw err2;
 
       fetchBanners();
-    } catch (error) {
-      console.error("Error reordering banners:", error);
-      toast.error("Erro ao reordenar banners");
-    }
-  };
+     } catch (error) {
+       const err = error as { message?: string };
+       const msg = err?.message || "Erro ao reordenar banners";
+       console.error("Error reordering banners:", error);
+       toast.error(msg);
+     }
+   };
 
   return (
     <div className="space-y-6">
@@ -426,12 +465,17 @@ export default function BannersPage() {
       )}
 
       {/* Create/Edit Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+      <Dialog open={editDialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-white">
               {selectedBanner ? "Editar Banner" : "Novo Banner"}
             </DialogTitle>
+            <DialogDescription className="text-white/60">
+              {selectedBanner
+                ? "Atualize as informações deste banner"
+                : "Cadastre um novo banner para o carrossel da home"}
+            </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -605,7 +649,7 @@ export default function BannersPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setEditDialogOpen(false)}
+                onClick={() => closeDialog()}
                 className="rounded-xl border-white/10 text-white/70"
               >
                 Cancelar

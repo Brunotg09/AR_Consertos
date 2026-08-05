@@ -33,16 +33,11 @@ DROP POLICY IF EXISTS "Leitura publica de servicos ativos" ON services;
 CREATE POLICY "Leitura publica de servicos ativos" ON services FOR SELECT
   TO anon, authenticated USING (active = true);
 
--- Admin pode tudo (via is_admin function)
+-- Admin pode tudo (via is_admin function - consistente com o layout /private)
 DROP POLICY IF EXISTS "Admin manage services" ON services;
 CREATE POLICY "Admin manage services" ON services FOR ALL
-  TO authenticated USING (
-    EXISTS (
-      SELECT 1 FROM user_private 
-      WHERE id = auth.uid() 
-      AND email LIKE '%@arconsertos.com.br'
-    )
-  );
+  TO authenticated USING (is_admin())
+  WITH CHECK (is_admin());
 
 -- Grants
 GRANT SELECT ON services TO anon, authenticated;
