@@ -25,6 +25,13 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -581,19 +588,41 @@ export default function BannersPage() {
               <Label htmlFor="icon_name" className="text-white/70">
                 Ícone (quando não usa imagem)
               </Label>
-              <select
-                id="icon_name"
+              <Select
                 value={formData.icon_name}
-                onChange={(e) => setFormData({ ...formData, icon_name: e.target.value })}
-                className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-white"
+                onValueChange={(value) => setFormData({ ...formData, icon_name: value })}
               >
-                <option value="">Nenhum (usar imagem)</option>
-                <option value="Wrench">🔧 Wrench (Conserto)</option>
-                <option value="Cpu">💻 Cpu (Eletrônica)</option>
-                <option value="Award">🏆 Award (Garantia)</option>
-                <option value="Zap">⚡ Zap (Energia)</option>
-                <option value="Settings">⚙️ Settings (Config)</option>
-              </select>
+                <SelectTrigger id="icon_name" className="rounded-xl border-white/10 bg-[#0f0f0f] text-white">
+                  <SelectValue placeholder="Nenhum (usar imagem)" />
+                </SelectTrigger>
+                <SelectContent className="h-[300px] max-h-[300px] bg-[#0f0f0f] border-white/10 text-white" sideOffset={8}>
+                  <SelectItem value="" className="pl-8">Nenhum (usar imagem)</SelectItem>
+                  <SelectItem value="Wrench" className="pl-8">🔧 Wrench (Conserto)</SelectItem>
+                  <SelectItem value="Cpu" className="pl-8">💻 Cpu (Eletrônica)</SelectItem>
+                  <SelectItem value="Award" className="pl-8">🏆 Award (Garantia)</SelectItem>
+                  <SelectItem value="Zap" className="pl-8">⚡ Zap (Energia)</SelectItem>
+                  <SelectItem value="Settings" className="pl-8">⚙️ Settings (Config)</SelectItem>
+                  <SelectItem value="WashingMachine" className="pl-8">🧺 WashingMachine (Lavadora)</SelectItem>
+                  <SelectItem value="Refrigerator" className="pl-8">🧊 Refrigerator (Geladeira)</SelectItem>
+                  <SelectItem value="Wine" className="pl-8">🍷 Wine (Vinhos)</SelectItem>
+                  <SelectItem value="CupSoda" className="pl-8">🥤 CupSoda (Bebidas)</SelectItem>
+                  <SelectItem value="Flame" className="pl-8">🔥 Flame (Fogo)</SelectItem>
+                  <SelectItem value="CookingPot" className="pl-8">🍲 CookingPot (Cozinha)</SelectItem>
+                  <SelectItem value="Coffee" className="pl-8">☕ Coffee (Café)</SelectItem>
+                  <SelectItem value="Blender" className="pl-8">🧃 Blender (Mixer)</SelectItem>
+                  <SelectItem value="ChefHat" className="pl-8">👨‍🍳 ChefHat (Chef)</SelectItem>
+                  <SelectItem value="Scissors" className="pl-8">✂️ Scissors (Tesoura)</SelectItem>
+                  <SelectItem value="Wind" className="pl-8">💨 Wind (Ventilador)</SelectItem>
+                  <SelectItem value="Sparkles" className="pl-8">✨ Sparkles (Brilho)</SelectItem>
+                  <SelectItem value="Hammer" className="pl-8">🔨 Hammer (Martelo)</SelectItem>
+                  <SelectItem value="Construction" className="pl-8">🏗️ Construction (Construção)</SelectItem>
+                  <SelectItem value="Droplet" className="pl-8">💧 Droplet (Água)</SelectItem>
+                  <SelectItem value="Fan" className="pl-8">🌀 Fan (Ventilador)</SelectItem>
+                  <SelectItem value="Radio" className="pl-8">📻 Radio (Rádio)</SelectItem>
+                  <SelectItem value="Bike" className="pl-8">🚲 Bike (Bicicleta)</SelectItem>
+                  <SelectItem value="Sun" className="pl-8">☀️ Sun (Sol)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Cor de Destaque */}

@@ -129,7 +129,7 @@ export function FloatingWidgetProvider({ children }: FloatingWidgetProps) {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     setCurrentOccasion(occasion);
     setIsVisible(true);
-    timeoutRef.current = setTimeout(() => setIsVisible(false), 12000);
+    timeoutRef.current = setTimeout(() => setIsVisible(false), 6000);
   }, []);
 
   useEffect(() => {
@@ -187,8 +187,8 @@ function FloatingWidgetDisplay({
 
   useEffect(() => {
     const enterTimer = setTimeout(() => setPhase("idle"), 600);
-    const exitTimer = setTimeout(() => setPhase("exit"), 11000);
-    const removeTimer = setTimeout(onClose, 12000);
+    const exitTimer = setTimeout(() => setPhase("exit"), 5000);
+    const removeTimer = setTimeout(onClose, 6000);
     return () => {
       clearTimeout(enterTimer);
       clearTimeout(exitTimer);

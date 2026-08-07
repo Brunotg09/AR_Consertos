@@ -16,12 +16,20 @@ import {
   Tag,
   Upload,
   Image as ImageIcon,
+  Plus,
 } from "lucide-react";
 import { useServices, ServiceItem } from "@/hooks/useServices";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -44,7 +52,7 @@ import {
 import { toast } from "sonner";
 
 export default function ServicosAdminPage() {
-  const { services, loading, updateService, deleteService } = useServices({ activeOnly: false });
+  const { services, loading, addService, updateService, deleteService } = useServices({ activeOnly: false });
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "convencional" | "inverter">("all");
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -54,9 +62,11 @@ export default function ServicosAdminPage() {
     name: "",
     description: "",
     category: "",
+    type: "convencional" as "convencional" | "inverter",
     price: "",
     discount_percentage: "",
     badge_garantia: "",
+    icon_name: "Wrench",
   });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -71,15 +81,33 @@ export default function ServicosAdminPage() {
     return matchesType && matchesSearch;
   });
 
+  const openCreateDialog = () => {
+    setSelectedService(null);
+    setEditForm({
+      name: "",
+      description: "",
+      category: "",
+      type: "convencional",
+      price: "",
+      discount_percentage: "0",
+      badge_garantia: "GARANTIA 90 DIAS",
+      icon_name: "Wrench",
+    });
+    setImages([]);
+    setEditDialogOpen(true);
+  };
+
   const openEditDialog = (service: ServiceItem) => {
     setSelectedService(service);
     setEditForm({
       name: service.name,
       description: service.description || "",
       category: service.category || "",
+      type: service.type,
       price: service.price?.toString() || "",
       discount_percentage: service.discount_percentage?.toString() || "0",
       badge_garantia: service.badge_garantia || "GARANTIA 90 DIAS",
+      icon_name: service.icon_name || "Wrench",
     });
     setImages(service.images || []);
     setEditDialogOpen(true);
@@ -87,14 +115,15 @@ export default function ServicosAdminPage() {
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files || files.length === 0 || !selectedService) return;
+    if (!files || files.length === 0) return;
 
     setUploading(true);
     const newImages = [...images];
+    const folder = selectedService?.service_id || `new-${Date.now()}`;
 
     for (const file of Array.from(files)) {
       const fileExt = file.name.split(".").pop();
-      const filePath = `${selectedService.service_id}/${Date.now()}.${fileExt}`;
+      const filePath = `${folder}/${Date.now()}.${fileExt}`;
 
       const { error } = await supabase.storage
         .from("service-images")
@@ -116,7 +145,6 @@ export default function ServicosAdminPage() {
   };
 
   const removeImage = async (index: number) => {
-    if (!selectedService) return;
     const imageUrl = images[index];
 
     // Try to extract path from URL and delete from storage
@@ -133,24 +161,51 @@ export default function ServicosAdminPage() {
   };
 
   const handleSaveEdit = async () => {
-    if (!selectedService) return;
+    if (!editForm.name) return;
     setSaving(true);
 
-    const { error } = await updateService(selectedService.id, {
-      name: editForm.name,
-      description: editForm.description,
-      category: editForm.category,
-      price: editForm.price ? parseFloat(editForm.price) : null,
-      discount_percentage: parseInt(editForm.discount_percentage) || 0,
-      badge_garantia: editForm.badge_garantia,
-      images: images,
-    });
+    if (selectedService) {
+      // Update existing
+      const { error } = await updateService(selectedService.id, {
+        name: editForm.name,
+        description: editForm.description,
+        category: editForm.category,
+        price: editForm.price ? parseFloat(editForm.price) : null,
+        discount_percentage: parseInt(editForm.discount_percentage) || 0,
+        badge_garantia: editForm.badge_garantia,
+        images: images,
+      });
 
-    if (error) {
-      toast.error("Erro ao salvar: " + error);
+      if (error) {
+        toast.error("Erro ao salvar: " + error);
+      } else {
+        toast.success(`Serviço "${editForm.name}" atualizado com sucesso!`);
+        setEditDialogOpen(false);
+      }
     } else {
-      toast.success(`Serviço "${editForm.name}" atualizado com sucesso!`);
-      setEditDialogOpen(false);
+      // Create new
+      const serviceType = editForm.type as "convencional" | "inverter";
+      const { error } = await addService({
+        name: editForm.name,
+        description: editForm.description,
+        category: editForm.category,
+        type: serviceType,
+        price: editForm.price ? parseFloat(editForm.price) : null,
+        discount_percentage: parseInt(editForm.discount_percentage) || 0,
+        badge_garantia: editForm.badge_garantia,
+        icon_name: editForm.icon_name || "Wrench",
+        images: images,
+        active: true,
+        sort_order: 0,
+        service_id: "",
+      });
+
+      if (error) {
+        toast.error("Erro ao criar: " + error);
+      } else {
+        toast.success(`Serviço "${editForm.name}" criado com sucesso!`);
+        setEditDialogOpen(false);
+      }
     }
     setSaving(false);
   };
@@ -189,13 +244,20 @@ export default function ServicosAdminPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-montserrat text-2xl font-bold text-white">Serviços</h1>
-          <p className="mt-1 text-sm text-white/50">Gerencie o catálogo de serviços</p>
-        </div>
-      </div>
+       {/* Header */}
+       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+         <div>
+           <h1 className="font-montserrat text-2xl font-bold text-white">Serviços</h1>
+           <p className="mt-1 text-sm text-white/50">Gerencie o catálogo de serviços</p>
+         </div>
+         <Button
+           onClick={openCreateDialog}
+           className="rounded-xl bg-[#E30613] text-white hover:bg-[#E30613]/90"
+         >
+           <Plus className="mr-2 h-4 w-4" />
+           Novo Serviço
+         </Button>
+       </div>
 
       {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row">
@@ -386,130 +448,202 @@ export default function ServicosAdminPage() {
       {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-white">Editar Serviço</DialogTitle>
-            <DialogDescription className="text-white/60">
-              Atualize as informações deste serviço
-            </DialogDescription>
-          </DialogHeader>
+           <DialogHeader>
+             <DialogTitle className="text-white">
+               {selectedService ? "Editar Serviço" : "Novo Serviço"}
+             </DialogTitle>
+             <DialogDescription className="text-white/60">
+               {selectedService
+                 ? "Atualize as informações deste serviço"
+                 : "Cadastre um novo serviço no catálogo"}
+             </DialogDescription>
+           </DialogHeader>
 
-          {selectedService && (
-            <div className="space-y-4">
-              <div className="rounded-lg bg-white/[0.02] p-3">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      selectedService.type === "inverter"
-                        ? "bg-[#8B5CF6]/20 text-[#8B5CF6]"
-                        : "bg-[#E30613]/20 text-[#E30613]"
-                    }`}
-                  >
-                    {selectedService.type}
-                  </span>
-                  <span className="text-xs text-white/50">{selectedService.service_id}</span>
-                </div>
-              </div>
+           {/* Service Type/ID Badge (edit only) */}
+           {selectedService && (
+             <div className="rounded-lg bg-white/[0.02] p-3">
+               <div className="flex items-center gap-2">
+                 <span
+                   className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                     selectedService.type === "inverter"
+                       ? "bg-[#8B5CF6]/20 text-[#8B5CF6]"
+                       : "bg-[#E30613]/20 text-[#E30613]"
+                   }`}
+                 >
+                   {selectedService.type}
+                 </span>
+                 <span className="text-xs text-white/50">{selectedService.service_id}</span>
+               </div>
+             </div>
+           )}
 
-              {/* Images Section */}
-              <div className="space-y-2">
-                <Label className="text-white/70">Imagens do Serviço</Label>
-                <div className="grid grid-cols-4 gap-2">
-                  {images.map((img, idx) => (
-                    <div key={idx} className="group relative aspect-square overflow-hidden rounded-lg border border-white/10">
-                      <img src={img} alt={`Imagem ${idx + 1}`} className="h-full w-full object-cover" />
-                      <button
-                        onClick={() => removeImage(idx)}
-                        className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-                  <label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border border-dashed border-white/20 bg-white/[0.02] transition-colors hover:bg-white/[0.04]">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={handleImageUpload}
-                      className="hidden"
-                    />
-                    {uploading ? (
-                      <Loader2 className="h-6 w-6 animate-spin text-white/50" />
-                    ) : (
-                      <Upload className="h-6 w-6 text-white/30" />
-                    )}
-                  </label>
-                </div>
-                <p className="text-[10px] text-white/40">
-                  Formatos: JPG, PNG, WebP. Tamanho máximo: 5MB por imagem.
-                </p>
-              </div>
+           {/* Images Section */}
+           <div className="space-y-2">
+             <Label className="text-white/70">Imagens do Serviço</Label>
+             <div className="grid grid-cols-4 gap-2">
+               {images.map((img, idx) => (
+                 <div key={idx} className="group relative aspect-square overflow-hidden rounded-lg border border-white/10">
+                   <img src={img} alt={`Imagem ${idx + 1}`} className="h-full w-full object-cover" />
+                   <button
+                     onClick={() => removeImage(idx)}
+                     className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                   >
+                     <X className="h-3 w-3" />
+                   </button>
+                 </div>
+               ))}
+               <label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border border-dashed border-white/20 bg-white/[0.02] transition-colors hover:bg-white/[0.04]">
+                 <input
+                   ref={fileInputRef}
+                   type="file"
+                   accept="image/*"
+                   multiple
+                   onChange={handleImageUpload}
+                   className="hidden"
+                 />
+                 {uploading ? (
+                   <Loader2 className="h-6 w-6 animate-spin text-white/50" />
+                 ) : (
+                   <Upload className="h-6 w-6 text-white/30" />
+                 )}
+               </label>
+             </div>
+             <p className="text-[10px] text-white/40">
+               Formatos: JPG, PNG, WebP. Tamanho máximo: 5MB por imagem.
+             </p>
+           </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-white/70">Nome *</Label>
-                  <Input
-                    value={editForm.name}
-                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-white/70">Categoria</Label>
-                  <Input
-                    value={editForm.category}
-                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
-                  />
-                </div>
-              </div>
+           <div className="grid grid-cols-2 gap-4">
+             <div className="space-y-2">
+               <Label className="text-white/70">Nome *</Label>
+               <Input
+                 value={editForm.name}
+                 onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                 className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+               />
+             </div>
+             <div className="space-y-2">
+               <Label className="text-white/70">Categoria</Label>
+               <Input
+                 value={editForm.category}
+                 onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                 className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+               />
+             </div>
+           </div>
 
-              <div className="space-y-2">
-                <Label className="text-white/70">Descrição</Label>
-                <Textarea
-                  value={editForm.description}
-                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  className="rounded-xl border-white/10 bg-white/[0.02] text-white min-h-[100px]"
-                />
-              </div>
+           <div className="space-y-2">
+             <Label className="text-white/70">Descrição</Label>
+             <Textarea
+               value={editForm.description}
+               onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+               className="rounded-xl border-white/10 bg-white/[0.02] text-white min-h-[100px]"
+             />
+           </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-white/70">Preço Base (R$)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={editForm.price}
-                    onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
-                    placeholder="0.00"
-                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-white/70">Desconto (%)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={editForm.discount_percentage}
-                    onChange={(e) => setEditForm({ ...editForm, discount_percentage: e.target.value })}
-                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-white/70">Badge Garantia</Label>
-                  <Input
-                    value={editForm.badge_garantia}
-                    onChange={(e) => setEditForm({ ...editForm, badge_garantia: e.target.value })}
-                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
+           <div className="grid grid-cols-3 gap-4">
+             <div className="space-y-2">
+               <Label className="text-white/70">Preço Base (R$)</Label>
+               <Input
+                 type="number"
+                 step="0.01"
+                 value={editForm.price}
+                 onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                 placeholder="0.00"
+                 className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+               />
+             </div>
+             <div className="space-y-2">
+               <Label className="text-white/70">Desconto (%)</Label>
+               <Input
+                 type="number"
+                 min="0"
+                 max="100"
+                 value={editForm.discount_percentage}
+                 onChange={(e) => setEditForm({ ...editForm, discount_percentage: e.target.value })}
+                 className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+               />
+             </div>
+             <div className="space-y-2">
+               <Label className="text-white/70">Badge Garantia</Label>
+               <Input
+                 value={editForm.badge_garantia}
+                 onChange={(e) => setEditForm({ ...editForm, badge_garantia: e.target.value })}
+                 className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+               />
+             </div>
+           </div>
 
-          <DialogFooter>
+           <div className="space-y-2">
+             <Label className="text-white/70">Tipo de Serviço</Label>
+             <div className="flex gap-2">
+               <button
+                 type="button"
+                 onClick={() => setEditForm({ ...editForm, type: "convencional" })}
+                 className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                   editForm.type === "convencional"
+                     ? "bg-[#E30613] text-white"
+                     : "bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+                 }`}
+               >
+                 <Wrench className="h-4 w-4" />
+                 Convencional
+               </button>
+               <button
+                 type="button"
+                 onClick={() => setEditForm({ ...editForm, type: "inverter" })}
+                 className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                   editForm.type === "inverter"
+                     ? "bg-[#8B5CF6] text-white"
+                     : "bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+                 }`}
+               >
+                 <Cpu className="h-4 w-4" />
+                 Inverter
+               </button>
+             </div>
+           </div>
+
+           <div className="space-y-2">
+             <Label className="text-white/70">Ícone do Serviço</Label>
+             <Select
+               value={editForm.icon_name}
+               onValueChange={(value) => setEditForm({ ...editForm, icon_name: value })}
+             >
+               <SelectTrigger className="rounded-xl border-white/10 bg-[#0f0f0f] text-white">
+                 <SelectValue placeholder="Selecione um ícone" />
+               </SelectTrigger>
+               <SelectContent className="h-[300px] max-h-[300px] bg-[#0f0f0f] border-white/10 text-white" sideOffset={8}>
+                 <SelectItem value="Wrench" className="pl-8">🔧 Wrench (Chave de Fenda)</SelectItem>
+                 <SelectItem value="Cpu" className="pl-8">💻 Cpu (Eletrônica)</SelectItem>
+                 <SelectItem value="Award" className="pl-8">🏆 Award (Garantia)</SelectItem>
+                 <SelectItem value="Zap" className="pl-8">⚡ Zap (Energia)</SelectItem>
+                 <SelectItem value="Settings" className="pl-8">⚙️ Settings (Configuração)</SelectItem>
+                 <SelectItem value="WashingMachine" className="pl-8">🧺 WashingMachine (Lavadora)</SelectItem>
+                 <SelectItem value="Refrigerator" className="pl-8">🧊 Refrigerator (Geladeira)</SelectItem>
+                 <SelectItem value="Wine" className="pl-8">🍷 Wine (Vinhos)</SelectItem>
+                 <SelectItem value="CupSoda" className="pl-8">🥤 CupSoda (Bebidas)</SelectItem>
+                 <SelectItem value="Flame" className="pl-8">🔥 Flame (Fogo)</SelectItem>
+                 <SelectItem value="CookingPot" className="pl-8">🍲 CookingPot (Cozinha)</SelectItem>
+                 <SelectItem value="Coffee" className="pl-8">☕ Coffee (Café)</SelectItem>
+                 <SelectItem value="Blender" className="pl-8">🧃 Blender (Mixer)</SelectItem>
+                 <SelectItem value="ChefHat" className="pl-8">👨‍🍳 ChefHat (Chef)</SelectItem>
+                 <SelectItem value="Scissors" className="pl-8">✂️ Scissors (Tesoura)</SelectItem>
+                 <SelectItem value="Wind" className="pl-8">💨 Wind (Ventilador)</SelectItem>
+                 <SelectItem value="Sparkles" className="pl-8">✨ Sparkles (Brilho)</SelectItem>
+                 <SelectItem value="Hammer" className="pl-8">🔨 Hammer (Martelo)</SelectItem>
+                 <SelectItem value="Construction" className="pl-8">🏗️ Construction (Construção)</SelectItem>
+                 <SelectItem value="Droplet" className="pl-8">💧 Droplet (Água)</SelectItem>
+                 <SelectItem value="Fan" className="pl-8">🌀 Fan (Ventilador)</SelectItem>
+                 <SelectItem value="Radio" className="pl-8">📻 Radio (Rádio)</SelectItem>
+                 <SelectItem value="Bike" className="pl-8">🚲 Bike (Bicicleta)</SelectItem>
+                 <SelectItem value="Sun" className="pl-8">☀️ Sun (Sol)</SelectItem>
+               </SelectContent>
+            </Select>
+           </div>
+
+
+           <DialogFooter>
             <Button
               variant="outline"
               onClick={() => setEditDialogOpen(false)}
@@ -528,9 +662,9 @@ export default function ServicosAdminPage() {
               ) : (
                 <Save className="mr-2 h-4 w-4" />
               )}
-              Salvar
-            </Button>
-          </DialogFooter>
+              {selectedService ? "Salvar" : "Criar"}
+             </Button>
+           </DialogFooter>
         </DialogContent>
       </Dialog>
 

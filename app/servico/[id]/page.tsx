@@ -145,8 +145,15 @@ export default function ServicoDetailPage() {
   const accent = isInverter ? "#8B5CF6" : "#E30613";
   const images = service.images && service.images.length > 0 ? service.images : [];
 
-  const formattedPrice = service.price
-    ? Number(service.price).toLocaleString("pt-BR", {
+  const hasDiscount = service.discount_percentage > 0;
+  const finalPrice = service.price
+    ? hasDiscount
+      ? Number(service.price) * (1 - service.discount_percentage / 100)
+      : Number(service.price)
+    : null;
+
+  const formattedPrice = finalPrice
+    ? finalPrice.toLocaleString("pt-BR", {
         style: "currency",
         currency: "BRL",
       })
@@ -324,7 +331,7 @@ export default function ServicoDetailPage() {
                   {service.discount_percentage > 0 && (
                     <>
                       <span className="text-sm line-through" style={{ color: "#666666" }}>
-                        R$ {(Number(service.price!) * (1 + service.discount_percentage / 100)).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        {service.price?.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                       </span>
                       <span
                         className="rounded-full px-2 py-0.5 font-oswald text-[10px] font-bold uppercase"
@@ -342,6 +349,17 @@ export default function ServicoDetailPage() {
                   </span>
                   <p className="mt-0.5 text-xs" style={{ color: "#888888" }}>
                     Faça seu orçamento sem compromisso
+                  </p>
+                </div>
+              )}
+
+              {service.discount_percentage > 0 && service.price && (
+                <div className="mt-2 flex items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 px-3 py-2">
+                  <svg className="h-4 w-4 text-green-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m0 6a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-xs font-medium text-green-400">
+                    Você economiza {service.discount_percentage}% nesse serviço — aproveite!
                   </p>
                 </div>
               )}
