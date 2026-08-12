@@ -93,32 +93,28 @@ Assistente:`;
 
     for (const modelName of GEMINI_MODELS) {
       try {
-        console.log(`[Chat API] Attempting to use model: ${modelName}`);
-
         const model = genAI.getGenerativeModel({ model: modelName });
 
         const result = await model.generateContent(fullPrompt);
         const response = await result.response;
         const content = response.text();
 
-        console.log(`[Chat API] Successfully used model: ${modelName}`);
-
         return NextResponse.json({ content });
       } catch (modelError) {
-        console.warn(`[Chat API] Model ${modelName} failed:`, modelError);
+       console.warn(`[Chat API] Model ${modelName} failed`);
         lastError = modelError instanceof Error ? modelError : new Error(String(modelError));
         continue;
       }
     }
 
     // All models failed
-    console.error("[Chat API] All Gemini models failed:", lastError);
-    return NextResponse.json(
+    console.error("[Chat API] All Gemini models failed");
+      return NextResponse.json(
       { content: "Desculpe, o serviço de IA está temporariamente indisponível. Entre em contato pelo telefone (79) 99944-6596 ou tente novamente em instantes." },
       { status: 200 }
     );
   } catch (error) {
-    console.error("[Chat API] Error:", error);
+    console.error("[Chat API] Error:", error instanceof Error ? error.message : String(error));
     return NextResponse.json(
       { content: "Desculpe, ocorreu um erro inesperado. Tente novamente mais tarde." },
       { status: 200 }

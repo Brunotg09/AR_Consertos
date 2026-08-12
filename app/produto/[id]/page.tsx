@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import { supabase } from "@/lib/supabase";
 import { useCart } from "@/contexts/CartContext";
 import { useFloatingWidget } from "@/components/FloatingWidget";
@@ -23,6 +24,7 @@ interface Product {
   category: string | null;
   description: string | null;
   price: number;
+  discount_percentage: number | null;
   stock: number;
   condition: string | null;
   images: string[] | null;
@@ -79,13 +81,15 @@ export default function ProdutoDetalhePage() {
 
   const handleAddToCart = () => {
     if (!product) return;
+    const priceToUse = discountedPrice ?? product.price;
     addProduct({
       id: product.id,
       name: product.name,
-      price: product.price,
+      price: priceToUse,
       image: product.images?.[0] || null,
       condition: product.condition,
       category: product.category,
+      maxStock: product.stock,
     });
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
@@ -137,6 +141,14 @@ export default function ProdutoDetalhePage() {
     style: "currency",
     currency: "BRL",
   });
+  const discountPct = product.discount_percentage || 0;
+  const discountedPrice = discountPct > 0 ? product.price * (1 - discountPct / 100) : null;
+  const formattedDiscountedPrice = discountedPrice
+    ? Number(discountedPrice).toLocaleString("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+      })
+    : null;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -164,11 +176,13 @@ export default function ProdutoDetalhePage() {
                     <Package className="h-12 w-12" style={{ color: "#444" }} />
                   </div>
                 ) : (
-                  <img
+                  <Image
                     src={images[currentImage]}
                     alt={`${product.name} — imagem ${currentImage + 1}`}
+                    fill
                     className="h-full w-full object-cover object-center transition-transform duration-500"
                     onError={() => setImgError(true)}
+                    sizes="100vw"
                   />
                 )
               ) : (
@@ -209,9 +223,11 @@ export default function ProdutoDetalhePage() {
                         opacity: idx === currentImage ? 1 : 0.6,
                       }}
                     >
-                      <img
+                      <Image
                         src={img}
                         alt={`${product.name} ${idx + 1}`}
+                        width={80}
+                        height={80}
                         className="h-full w-full object-cover"
                         loading="lazy"
                       />
@@ -269,9 +285,23 @@ export default function ProdutoDetalhePage() {
 
             {/* Price */}
             <div className="flex items-baseline gap-3">
-              <span className="font-oswald text-3xl font-bold" style={{ color: "#E30613" }}>
-                {formattedPrice}
-              </span>
+              {discountedPrice ? (
+                <>
+                  <span className="font-oswald text-xl line-through" style={{ color: "#666666" }}>
+                    {formattedPrice}
+                  </span>
+                  <span className="font-oswald text-3xl font-bold" style={{ color: "#E30613" }}>
+                    {formattedDiscountedPrice}
+                  </span>
+                  <span className="rounded-full bg-[#E30613]/20 px-2 py-0.5 text-xs font-bold text-[#E30613]">
+                    -{discountPct}%
+                  </span>
+                </>
+              ) : (
+                <span className="font-oswald text-3xl font-bold" style={{ color: "#E30613" }}>
+                  {formattedPrice}
+                </span>
+              )}
             </div>
 
             {/* Stock */}

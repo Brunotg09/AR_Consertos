@@ -41,8 +41,8 @@ export function useServiceWorkerUpdate() {
         }
 
         registration.update();
-      } catch (error) {
-        console.error('SW update check failed:', error);
+      } catch {
+        // Service worker update check failed silently
       }
     };
 

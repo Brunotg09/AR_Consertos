@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import {
   Search,
   Eye,
@@ -19,6 +19,7 @@ import {
   Plus,
 } from "lucide-react";
 import { useServices, ServiceItem } from "@/hooks/useServices";
+import { servicesData } from "@/data/services";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { CategoryCombobox } from "@/components/category-combobox";
 import {
   Dialog,
   DialogContent,
@@ -72,6 +74,15 @@ export default function ServicosAdminPage() {
   const [uploading, setUploading] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const allCategories = useMemo(() => {
+    const cats = new Set<string>();
+    servicesData.forEach((s) => cats.add(s.category));
+    services.forEach((s) => {
+      if (s.category) cats.add(s.category);
+    });
+    return Array.from(cats);
+  }, [services]);
 
   const filteredServices = services.filter((service) => {
     const matchesType = typeFilter === "all" || service.type === typeFilter;
@@ -195,9 +206,8 @@ export default function ServicosAdminPage() {
         badge_garantia: editForm.badge_garantia,
         icon_name: editForm.icon_name || "Wrench",
         images: images,
-        active: true,
+         active: true,
         sort_order: 0,
-        service_id: "",
       });
 
       if (error) {
@@ -522,14 +532,17 @@ export default function ServicosAdminPage() {
                  className="rounded-xl border-white/10 bg-white/[0.02] text-white"
                />
              </div>
-             <div className="space-y-2">
-               <Label className="text-white/70">Categoria</Label>
-               <Input
-                 value={editForm.category}
-                 onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                 className="rounded-xl border-white/10 bg-white/[0.02] text-white"
-               />
-             </div>
+              <div className="space-y-2">
+                <Label className="text-white/70">Categoria</Label>
+                <CategoryCombobox
+                  value={editForm.category}
+                  onChange={(value) =>
+                    setEditForm({ ...editForm, category: value })
+                  }
+                  categories={allCategories}
+                  placeholder="Selecione ou digite uma categoria..."
+                />
+              </div>
            </div>
 
            <div className="space-y-2">

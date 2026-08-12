@@ -62,7 +62,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useServices } from "@/hooks/useServices";
-import { generateOSPDF, generateSingleItemOSPDF } from "@/lib/generateOSPDF";
+import { generateOSPDF, generateSingleItemOSPDF, PDFCliente, PDFOrder, PDFOrderItem } from "@/lib/generateOSPDF";
 
 // Types
 interface Cliente {
@@ -107,6 +107,19 @@ interface OrderItem {
   product_category: string | null;
   product_condition: string | null;
   product_images: string[] | null;
+  teste_equipamento_ligado?: boolean;
+  teste_funcao_principal?: boolean;
+  teste_funcoes_secundarias?: boolean;
+  teste_pecas_substituidas?: boolean;
+  teste_funcionando_normalmente?: boolean;
+  entrega_equipamento_entregue?: boolean;
+  entrega_acessorios_conferidos?: boolean;
+  entrega_equipamento_testado?: boolean;
+  entrega_pagamento_registrado?: boolean;
+  entrega_os_enviada?: boolean;
+  entrega_garantia_disponibilizada?: boolean;
+  entrega_data?: string | null;
+  entrega_hora?: string | null;
 }
 
 interface Order {
@@ -142,6 +155,7 @@ export default function PedidosPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "servico" | "produto">("all");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
 
   // Dialogs
@@ -158,6 +172,7 @@ export default function PedidosPage() {
 
   // Form states
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [profiles, setProfiles] = useState<{ id: string; full_name: string; phone: string | null }[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [clientSearch, setClientSearch] = useState("");
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
@@ -177,6 +192,7 @@ export default function PedidosPage() {
   }[]>([]);
   const [orderPaymentMethod, setOrderPaymentMethod] = useState<string>("");
   const [orderNotes, setOrderNotes] = useState("");
+  const [orderScheduledDate, setOrderScheduledDate] = useState("");
 
   const [saving, setSaving] = useState(false);
 
@@ -193,6 +209,40 @@ export default function PedidosPage() {
   const [servicePrice, setServicePrice] = useState("");
   const [servicePhotos, setServicePhotos] = useState<string[]>([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  const [testeFinal, setTesteFinal] = useState<{
+    equipamentoLigado: boolean;
+    funcaoPrincipal: boolean;
+    funcoesSecundarias: boolean;
+    pecasSubstituidas: boolean;
+    funcionandoNormalmente: boolean;
+  }>({
+    equipamentoLigado: false,
+    funcaoPrincipal: false,
+    funcoesSecundarias: false,
+    pecasSubstituidas: false,
+    funcionandoNormalmente: false,
+  });
+
+  const [entregaEquipamento, setEntregaEquipamento] = useState<{
+    equipamentoEntregue: boolean;
+    acessoriosConferidos: boolean;
+    equipamentoTestado: boolean;
+    pagamentoRegistrado: boolean;
+    osEnviada: boolean;
+    garantiaDisponibilizada: boolean;
+    dataEntrega: string;
+    horaEntrega: string;
+  }>({
+    equipamentoEntregue: false,
+    acessoriosConferidos: false,
+    equipamentoTestado: false,
+    pagamentoRegistrado: false,
+    osEnviada: false,
+    garantiaDisponibilizada: false,
+    dataEntrega: "",
+    horaEntrega: "",
+  });
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -247,7 +297,7 @@ export default function PedidosPage() {
     }
   }, []);
 
-  const fetchProducts = useCallback(async () => {
+  const fetchProductos = useCallback(async () => {
     try {
       const { data } = await withTimeout(
         () => supabase
@@ -264,21 +314,47 @@ export default function PedidosPage() {
     }
   }, []);
 
+  const fetchProfiles = useCallback(async () => {
+    try {
+      const { data } = await withTimeout(
+        () => supabase
+          .from("profiles")
+          .select("id, full_name, phone"),
+        8000,
+        { data: null, error: null }
+      );
+      setProfiles(data || []);
+    } catch {
+      setProfiles([]);
+    }
+  }, []);
+
   useEffect(() => {
     fetchOrders();
     fetchClientes();
-    fetchProducts();
-  }, [fetchOrders, fetchClientes, fetchProducts]);
+    fetchProductos();
+    fetchProfiles();
+  }, [fetchOrders, fetchClientes, fetchProductos, fetchProfiles]);
 
   // Filtered lists
   const filteredOrders = orders.filter((order) => {
     const searchLower = search.toLowerCase();
-    return (
+    const matchesSearch =
+      !search ||
       order.id.toLowerCase().includes(searchLower) ||
       order.cliente?.nome?.toLowerCase().includes(searchLower) ||
       order.cliente?.telefone?.includes(search) ||
-      order.cliente?.email?.toLowerCase().includes(searchLower)
-    );
+      order.cliente?.email?.toLowerCase().includes(searchLower);
+
+    if (!matchesSearch) return false;
+    if (typeFilter === "all") return true;
+
+    const hasServico = (order.items || []).some((i) => i.item_type === "servico");
+    const hasProduto = (order.items || []).some((i) => i.item_type === "produto");
+
+    if (typeFilter === "servico") return hasServico;
+    if (typeFilter === "produto") return hasProduto;
+    return true;
   });
 
   const filteredClientes = clientes.filter((c) =>
@@ -286,6 +362,29 @@ export default function PedidosPage() {
     c.telefone?.includes(clientSearch) ||
     c.email?.toLowerCase().includes(clientSearch.toLowerCase())
   );
+
+  const filteredProfiles = profiles.filter((p) =>
+    (p.full_name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+     p.phone?.includes(clientSearch))
+  );
+
+  const selectProfileAsClient = (profile: { id: string; full_name: string; phone: string | null }) => {
+    const existing = clientes.find((c) => c.user_id === profile.id);
+    if (existing) {
+      setSelectedCliente(existing);
+    } else {
+      setSelectedCliente({
+        id: 0,
+        nome: profile.full_name,
+        telefone: profile.phone,
+        email: null,
+        cpf: null,
+        endereco: null,
+        user_id: profile.id,
+      });
+    }
+    setClientSearch("");
+  };
 
   const filteredServices = servicesData.filter((s) =>
     s.name.toLowerCase().includes(serviceSearch.toLowerCase()) ||
@@ -308,8 +407,12 @@ export default function PedidosPage() {
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       pendente: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+      aguardando_orcamento: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+      orcamento_enviado: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
       confirmado: "bg-blue-500/20 text-blue-400 border-blue-500/30",
       em_andamento: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+      pronta: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+      entregue: "bg-teal-500/20 text-teal-400 border-teal-500/30",
       concluido: "bg-green-500/20 text-green-400 border-green-500/30",
       cancelado: "bg-red-500/20 text-red-400 border-red-500/30",
     };
@@ -319,13 +422,30 @@ export default function PedidosPage() {
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
       pendente: "Pendente",
+      aguardando_orcamento: "Aguardando Orçamento",
+      orcamento_enviado: "Orçamento Enviado",
       confirmado: "Confirmado",
       em_andamento: "Em Andamento",
+      pronta: "Pronta",
+      entregue: "Entregue",
       concluido: "Concluído",
       cancelado: "Cancelado",
     };
     return labels[status] || status;
   };
+
+  const STATUS_FLOW = [
+    "pendente",
+    "aguardando_orcamento",
+    "orcamento_enviado",
+    "confirmado",
+    "em_andamento",
+    "pronta",
+    "entregue",
+    "concluido",
+  ] as const;
+
+  const FINALIZED_STATUSES = ["concluido", "cancelado", "confirmado", "pronta", "entregue"];
 
   const getItemBorderColor = (item: OrderItem) => {
     if (item.item_type === "produto") return "border-l-[#C9A84C]";
@@ -416,7 +536,7 @@ export default function PedidosPage() {
           i.id === item.id ? { ...i, status: newStatus } : i
         );
         
-        const statusPriority = ["pendente", "confirmado", "em_andamento", "concluido"];
+        const statusPriority = [...STATUS_FLOW] as string[];
         
         // Filter out cancelled items
         const activeItems = updatedItems.filter((i) => i.status !== "cancelado");
@@ -490,6 +610,19 @@ export default function PedidosPage() {
     setOrderItems(orderItems.filter((_, i) => i !== index));
   };
 
+  const parseItemsInput = (text: string, type: "servico" | "produto") => {
+    if (!text.trim()) return;
+    const parts = text.split(/[,\/]/).map((s) => s.trim()).filter(Boolean);
+    const newItems: typeof orderItems = parts.map((name) => ({
+      type,
+      id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name,
+      quantity: 1,
+      price: null,
+    }));
+    setOrderItems([...orderItems, ...newItems]);
+  };
+
   const updateItemQuantity = (index: number, quantity: number) => {
     const item = orderItems[index];
     if (item.type === "produto" && item.productStock && quantity > item.productStock) {
@@ -518,15 +651,15 @@ export default function PedidosPage() {
       let clienteId = selectedCliente?.id;
       let userId = selectedCliente?.user_id || null;
 
-      // Create new client if needed
-      if (!clienteId && showNewClientForm) {
+      // Create new client if needed (from form or from profile)
+      if (!clienteId || clienteId === 0) {
+        const clientData = clienteId === 0
+          ? { nome: selectedCliente!.nome, telefone: selectedCliente!.telefone, user_id: selectedCliente!.user_id }
+          : { nome: newClientForm.nome, telefone: newClientForm.telefone || null, email: newClientForm.email || null };
+
         const { data: newClient, error: clientError } = await supabase
           .from("clientes")
-          .insert([{
-            nome: newClientForm.nome,
-            telefone: newClientForm.telefone || null,
-            email: newClientForm.email || null,
-          }])
+          .insert([clientData])
           .select("id")
           .single();
 
@@ -558,8 +691,45 @@ export default function PedidosPage() {
 
       if (orderError) throw orderError;
 
+      // Create custom services/products in DB and get real IDs
+      const resolvedItems: typeof orderItems = [];
+      for (const item of orderItems) {
+        if (item.id.startsWith("custom-")) {
+          if (item.type === "servico") {
+            const serviceId = `svc_custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+            const { data: newService, error: svcError } = await supabase
+              .from("services")
+              .insert([{
+                service_id: serviceId,
+                name: item.name,
+                type: "convencional",
+                active: false,
+              }])
+              .select("service_id")
+              .single();
+            if (svcError) throw svcError;
+            resolvedItems.push({ ...item, id: newService.service_id });
+          } else {
+            const { data: newProduct, error: prodError } = await supabase
+              .from("products")
+              .insert([{
+                name: item.name,
+                price: 0,
+                stock: 0,
+                active: false,
+              }])
+              .select("id")
+              .single();
+            if (prodError) throw prodError;
+            resolvedItems.push({ ...item, id: newProduct.id.toString() });
+          }
+        } else {
+          resolvedItems.push(item);
+        }
+      }
+
       // Create order items
-      const itemsToInsert = orderItems.map((item) => ({
+      const itemsToInsert = resolvedItems.map((item) => ({
         order_id: order.id,
         item_type: item.type,
         item_id: item.id,
@@ -568,10 +738,11 @@ export default function PedidosPage() {
         quantity: item.quantity,
         price: item.price,
         payment_method: orderPaymentMethod || null,
-        payment_status: item.type === "produto" ? "pago" : "pendente",
-        amount_paid: item.type === "produto" && item.price ? item.price * item.quantity : 0,
+        payment_status: "pendente",
+        amount_paid: 0,
         product_category: item.type === "produto" ? products.find(p => p.id.toString() === item.id)?.category : null,
         product_condition: item.type === "produto" ? products.find(p => p.id.toString() === item.id)?.condition : null,
+        scheduled_date: orderScheduledDate || null,
       }));
 
       const { error: itemsError } = await supabase
@@ -581,7 +752,7 @@ export default function PedidosPage() {
       if (itemsError) throw itemsError;
 
       // Decrement stock for products
-      for (const item of orderItems) {
+      for (const item of resolvedItems) {
         if (item.type === "produto") {
           await supabase.rpc("managed_decrement_stock", {
             product_id: parseInt(item.id),
@@ -612,6 +783,7 @@ export default function PedidosPage() {
     setOrderItems([]);
     setOrderPaymentMethod("");
     setOrderNotes("");
+    setOrderScheduledDate("");
   };
 
   // Payment handling
@@ -685,6 +857,45 @@ export default function PedidosPage() {
     setServiceDiagnosis(item.diagnosis || "");
     setServicePrice(item.price?.toString() || "");
     setServicePhotos(item.product_images || []);
+
+    if (item.completed_at) {
+      setTesteFinal({
+        equipamentoLigado: item.teste_equipamento_ligado || false,
+        funcaoPrincipal: item.teste_funcao_principal || false,
+        funcoesSecundarias: item.teste_funcoes_secundarias || false,
+        pecasSubstituidas: item.teste_pecas_substituidas || false,
+        funcionandoNormalmente: item.teste_funcionando_normalmente || false,
+      });
+      setEntregaEquipamento({
+        equipamentoEntregue: item.entrega_equipamento_entregue || false,
+        acessoriosConferidos: item.entrega_acessorios_conferidos || false,
+        equipamentoTestado: item.entrega_equipamento_testado || false,
+        pagamentoRegistrado: item.entrega_pagamento_registrado || false,
+        osEnviada: item.entrega_os_enviada || false,
+        garantiaDisponibilizada: item.entrega_garantia_disponibilizada || false,
+        dataEntrega: item.entrega_data || "",
+        horaEntrega: item.entrega_hora || "",
+      });
+    } else {
+      setTesteFinal({
+        equipamentoLigado: false,
+        funcaoPrincipal: false,
+        funcoesSecundarias: false,
+        pecasSubstituidas: false,
+        funcionandoNormalmente: false,
+      });
+      setEntregaEquipamento({
+        equipamentoEntregue: false,
+        acessoriosConferidos: false,
+        equipamentoTestado: false,
+        pagamentoRegistrado: false,
+        osEnviada: false,
+        garantiaDisponibilizada: false,
+        dataEntrega: new Date().toISOString().split("T")[0],
+        horaEntrega: new Date().toTimeString().slice(0, 5),
+      });
+    }
+
     setCompleteServiceDialogOpen(true);
   };
 
@@ -709,6 +920,19 @@ export default function PedidosPage() {
           diagnosis: serviceDiagnosis,
           price: parseFloat(servicePrice),
           product_images: servicePhotos.length > 0 ? servicePhotos : null,
+          teste_equipamento_ligado: testeFinal.equipamentoLigado,
+          teste_funcao_principal: testeFinal.funcaoPrincipal,
+          teste_funcoes_secundarias: testeFinal.funcoesSecundarias,
+          teste_pecas_substituidas: testeFinal.pecasSubstituidas,
+          teste_funcionando_normalmente: testeFinal.funcionandoNormalmente,
+          entrega_equipamento_entregue: entregaEquipamento.equipamentoEntregue,
+          entrega_acessorios_conferidos: entregaEquipamento.acessoriosConferidos,
+          entrega_equipamento_testado: entregaEquipamento.equipamentoTestado,
+          entrega_pagamento_registrado: entregaEquipamento.pagamentoRegistrado,
+          entrega_os_enviada: entregaEquipamento.osEnviada,
+          entrega_garantia_disponibilizada: entregaEquipamento.garantiaDisponibilizada,
+          entrega_data: entregaEquipamento.dataEntrega || null,
+          entrega_hora: entregaEquipamento.horaEntrega || null,
         })
         .eq("id", selectedItem.id);
 
@@ -761,6 +985,19 @@ export default function PedidosPage() {
           product_images: servicePhotos.length > 0 ? servicePhotos : null,
           completed_at: completedAt.toISOString(),
           warranty_expires_at: warrantyExpires.toISOString(),
+          teste_equipamento_ligado: testeFinal.equipamentoLigado,
+          teste_funcao_principal: testeFinal.funcaoPrincipal,
+          teste_funcoes_secundarias: testeFinal.funcoesSecundarias,
+          teste_pecas_substituidas: testeFinal.pecasSubstituidas,
+          teste_funcionando_normalmente: testeFinal.funcionandoNormalmente,
+          entrega_equipamento_entregue: entregaEquipamento.equipamentoEntregue,
+          entrega_acessorios_conferidos: entregaEquipamento.acessoriosConferidos,
+          entrega_equipamento_testado: entregaEquipamento.equipamentoTestado,
+          entrega_pagamento_registrado: entregaEquipamento.pagamentoRegistrado,
+          entrega_os_enviada: entregaEquipamento.osEnviada,
+          entrega_garantia_disponibilizada: entregaEquipamento.garantiaDisponibilizada,
+          entrega_data: entregaEquipamento.dataEntrega || null,
+          entrega_hora: entregaEquipamento.horaEntrega || null,
         })
         .eq("id", selectedItem.id);
 
@@ -865,13 +1102,24 @@ export default function PedidosPage() {
     }
   };
 
+  const formatAddress = (addr: unknown): string | null => {
+    if (!addr) return null;
+    if (typeof addr === "string") return addr;
+    const a = addr as Record<string, string>;
+    const parts = [a.rua, a.numero, a.bairro, a.cidade, a.estado].filter(Boolean);
+    const cep = a.cep ? `CEP: ${a.cep}` : null;
+    return [...parts, cep].filter(Boolean).join(", ") || null;
+  };
+
   const handlePrintOS = (order: Order) => {
-    const pdfData = {
+    const pdfOrder: PDFOrder = {
       order_id: order.id,
       order_status: order.status,
       order_payment_method: order.payment_method,
       order_total: order.total,
       order_created_at: order.created_at,
+      order_notes: order.notes || null,
+      order_updated_at: order.updated_at || null,
       items: (order.items || []).map((item) => ({
         item_type: item.item_type,
         item_name: item.item_name,
@@ -880,29 +1128,64 @@ export default function PedidosPage() {
         item_price: item.price,
         item_payment_status: item.payment_status,
         item_amount_paid: item.amount_paid,
+        item_scheduled_date: item.scheduled_date || null,
         item_problem_description: item.problem_description,
         item_diagnosis: item.diagnosis,
         item_completed_at: item.completed_at,
         item_warranty_expires_at: item.warranty_expires_at,
         item_product_category: item.product_category,
         item_product_condition: item.product_condition,
+        item_product_images: item.product_images || null,
+        status: item.status || null,
+        teste_equipamento_ligado: item.teste_equipamento_ligado,
+        teste_funcao_principal: item.teste_funcao_principal,
+        teste_funcoes_secundarias: item.teste_funcoes_secundarias,
+        teste_pecas_substituidas: item.teste_pecas_substituidas,
+        teste_funcionando_normalmente: item.teste_funcionando_normalmente,
+        entrega_equipamento_entregue: item.entrega_equipamento_entregue,
+        entrega_acessorios_conferidos: item.entrega_acessorios_conferidos,
+        entrega_equipamento_testado: item.entrega_equipamento_testado,
+        entrega_pagamento_registrado: item.entrega_pagamento_registrado,
+        entrega_os_enviada: item.entrega_os_enviada,
+        entrega_garantia_disponibilizada: item.entrega_garantia_disponibilizada,
+        entrega_data: item.entrega_data,
+        entrega_hora: item.entrega_hora,
       })),
     };
 
-    generateOSPDF(pdfData, order.cliente?.nome || "Cliente");
+    const pdfCliente: PDFCliente = {
+      nome: order.cliente?.nome || "Cliente não informado",
+      cpf: order.cliente?.cpf || null,
+      telefone: order.cliente?.telefone || null,
+      whatsapp: null,
+      email: order.cliente?.email || null,
+      endereco: formatAddress(order.cliente?.endereco),
+      forma_atendimento: null,
+    };
+
+    generateOSPDF(pdfOrder, pdfCliente, {
+      nome: "A.R CONSERTOS",
+      cnpj: "",
+      endereco: "",
+      telefone: "",
+      email: "",
+      site: "",
+    });
   };
 
   const handlePrintItemOS = (order: Order, item: OrderItem) => {
-    const pdfData = {
+    const pdfOrder: PDFOrder = {
       order_id: order.id,
       order_status: order.status,
       order_payment_method: order.payment_method,
       order_total: order.total,
       order_created_at: order.created_at,
+      order_notes: order.notes || null,
+      order_updated_at: order.updated_at || null,
       items: [],
     };
 
-    const pdfItem = {
+    const pdfItem: PDFOrderItem = {
       item_type: item.item_type,
       item_name: item.item_name,
       item_service_type: item.service_type,
@@ -910,15 +1193,48 @@ export default function PedidosPage() {
       item_price: item.price,
       item_payment_status: item.payment_status,
       item_amount_paid: item.amount_paid,
+      item_scheduled_date: item.scheduled_date || null,
       item_problem_description: item.problem_description,
       item_diagnosis: item.diagnosis,
       item_completed_at: item.completed_at,
       item_warranty_expires_at: item.warranty_expires_at,
       item_product_category: item.product_category,
       item_product_condition: item.product_condition,
+      item_product_images: item.product_images || null,
+      status: item.status || null,
+      teste_equipamento_ligado: item.teste_equipamento_ligado,
+      teste_funcao_principal: item.teste_funcao_principal,
+      teste_funcoes_secundarias: item.teste_funcoes_secundarias,
+      teste_pecas_substituidas: item.teste_pecas_substituidas,
+      teste_funcionando_normalmente: item.teste_funcionando_normalmente,
+      entrega_equipamento_entregue: item.entrega_equipamento_entregue,
+      entrega_acessorios_conferidos: item.entrega_acessorios_conferidos,
+      entrega_equipamento_testado: item.entrega_equipamento_testado,
+      entrega_pagamento_registrado: item.entrega_pagamento_registrado,
+      entrega_os_enviada: item.entrega_os_enviada,
+      entrega_garantia_disponibilizada: item.entrega_garantia_disponibilizada,
+      entrega_data: item.entrega_data,
+      entrega_hora: item.entrega_hora,
     };
 
-    generateSingleItemOSPDF(pdfData, pdfItem, order.cliente?.nome || "Cliente");
+    const pdfCliente: PDFCliente = {
+      nome: order.cliente?.nome || "Cliente não informado",
+      cpf: order.cliente?.cpf || null,
+      telefone: order.cliente?.telefone || null,
+      whatsapp: null,
+      email: order.cliente?.email || null,
+      endereco: formatAddress(order.cliente?.endereco),
+      forma_atendimento: null,
+    };
+
+    generateSingleItemOSPDF(pdfOrder, pdfItem, pdfCliente, {
+      nome: "A.R CONSERTOS",
+      cnpj: "",
+      endereco: "",
+      telefone: "",
+      email: "",
+      site: "",
+    });
   };
 
   return (
@@ -938,15 +1254,51 @@ export default function PedidosPage() {
         </Button>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por ID, cliente, telefone..."
-          className="rounded-xl border-white/10 bg-white/[0.02] pl-10 text-white placeholder:text-white/30"
-        />
+      {/* Search & Filters */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="relative max-w-md flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por ID, cliente, telefone..."
+            className="rounded-xl border-white/10 bg-white/[0.02] pl-10 text-white placeholder:text-white/30"
+          />
+        </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => setTypeFilter("all")}
+            className={`rounded-xl ${
+              typeFilter === "all"
+                ? "bg-[#E30613] text-white"
+                : "bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+            }`}
+          >
+            Geral
+          </Button>
+          <Button
+            onClick={() => setTypeFilter("servico")}
+            className={`rounded-xl ${
+              typeFilter === "servico"
+                ? "bg-[#E30613] text-white"
+                : "bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+            }`}
+          >
+            <Wrench className="mr-1 h-3 w-3" />
+            Serviços
+          </Button>
+          <Button
+            onClick={() => setTypeFilter("produto")}
+            className={`rounded-xl ${
+              typeFilter === "produto"
+                ? "bg-[#C9A84C] text-black"
+                : "bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+            }`}
+          >
+            <Package className="mr-1 h-3 w-3" />
+            Produtos
+          </Button>
+        </div>
       </div>
 
       {/* Orders List */}
@@ -1043,7 +1395,9 @@ export default function PedidosPage() {
 
                     {/* Items */}
                     <div className="space-y-3">
-                      {order.items?.map((item) => {
+                      {(order.items || [])
+                        .filter((item) => typeFilter === "all" || item.item_type === typeFilter)
+                        .map((item) => {
                         const itemTotal = (item.price || 0) * item.quantity;
                         const itemPaid = item.amount_paid || 0;
                         const isPaid = item.payment_status === "pago";
@@ -1103,33 +1457,35 @@ export default function PedidosPage() {
                                   </SelectTrigger>
                                   <SelectContent className="bg-[#1a1a1a] border-white/10">
                                     <SelectItem value="pendente" className="text-white text-xs">Pendente</SelectItem>
+                                    <SelectItem value="aguardando_orcamento" className="text-white text-xs">Aguardando Orçamento</SelectItem>
+                                    <SelectItem value="orcamento_enviado" className="text-white text-xs">Orçamento Enviado</SelectItem>
                                     <SelectItem value="confirmado" className="text-white text-xs">Confirmado</SelectItem>
                                     <SelectItem value="em_andamento" className="text-white text-xs">Em Andamento</SelectItem>
+                                    <SelectItem value="pronta" className="text-white text-xs">Pronta</SelectItem>
+                                    <SelectItem value="entregue" className="text-white text-xs">Entregue</SelectItem>
                                     <SelectItem value="concluido" className="text-white text-xs">Concluído</SelectItem>
                                     <SelectItem value="cancelado" className="text-white text-xs text-red-400">Cancelado</SelectItem>
                                   </SelectContent>
                                 </Select>
 
                                 {/* Payment Status */}
-                                {item.item_type === "servico" && (
-                                  <>
-                                    {isPaid ? (
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
-                                        <CheckCircle className="h-3 w-3" />
-                                        Pago
-                                      </span>
-                                    ) : isPartial ? (
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/20 px-2 py-0.5 text-xs text-orange-400">
-                                        Pago {formatCurrency(itemPaid)} | Falta {formatCurrency(itemTotal - itemPaid)}
-                                      </span>
-                                    ) : (
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs text-yellow-400">
-                                        <Clock className="h-3 w-3" />
-                                        Pendente
-                                      </span>
-                                    )}
-                                  </>
-                                )}
+                                <>
+                                  {isPaid ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
+                                      <CheckCircle className="h-3 w-3" />
+                                      Pago
+                                    </span>
+                                  ) : isPartial ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/20 px-2 py-0.5 text-xs text-orange-400">
+                                      Pago {formatCurrency(itemPaid)} | Falta {formatCurrency(itemTotal - itemPaid)}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs text-yellow-400">
+                                      <Clock className="h-3 w-3" />
+                                      Pendente
+                                    </span>
+                                  )}
+                                </>
 
                                 {/* Actions */}
                                 {item.item_type === "servico" && !isCompleted && (
@@ -1148,7 +1504,23 @@ export default function PedidosPage() {
                                     Editar
                                   </button>
                                 )}
-                                {item.item_type === "servico" && !isPaid && item.price && (
+                                {item.item_type === "produto" && !isCompleted && (
+                                  <button
+                                    onClick={() => openCompleteServiceDialog(order, item)}
+                                    className="rounded bg-blue-500/20 px-2 py-1 text-xs text-blue-400 hover:bg-blue-500/30"
+                                  >
+                                    {item.price ? "Editar Dados" : "Incluir Dados"}
+                                  </button>
+                                )}
+                                {item.item_type === "produto" && isCompleted && (
+                                  <button
+                                    onClick={() => openCompleteServiceDialog(order, item)}
+                                    className="rounded bg-blue-500/20 px-2 py-1 text-xs text-blue-400 hover:bg-blue-500/30"
+                                  >
+                                    Editar
+                                  </button>
+                                )}
+                                {!isPaid && item.price && (
                                   <button
                                     onClick={() => openPaymentDialog(order, item)}
                                     className="rounded bg-[#C9A84C]/20 px-2 py-1 text-xs text-[#C9A84C] hover:bg-[#C9A84C]/30"
@@ -1210,7 +1582,7 @@ export default function PedidosPage() {
                       <div className="flex flex-wrap gap-2">
                         {/* Status Change */}
                         <Select
-                          value={order.status}
+                          value={order.status || "pendente"}
                           onValueChange={(value) => updateOrderStatus(order.id, value)}
                         >
                           <SelectTrigger className={`w-36 rounded-lg border-0 text-xs font-medium ${getStatusColor(order.status)}`}>
@@ -1218,8 +1590,12 @@ export default function PedidosPage() {
                           </SelectTrigger>
                           <SelectContent className="bg-[#1a1a1a] border-white/10">
                             <SelectItem value="pendente" className="text-white">Pendente</SelectItem>
+                            <SelectItem value="aguardando_orcamento" className="text-white">Aguardando Orçamento</SelectItem>
+                            <SelectItem value="orcamento_enviado" className="text-white">Orçamento Enviado</SelectItem>
                             <SelectItem value="confirmado" className="text-white">Confirmado</SelectItem>
                             <SelectItem value="em_andamento" className="text-white">Em Andamento</SelectItem>
+                            <SelectItem value="pronta" className="text-white">Pronta</SelectItem>
+                            <SelectItem value="entregue" className="text-white">Entregue</SelectItem>
                             <SelectItem value="concluido" className="text-white">Concluído</SelectItem>
                             <SelectItem value="cancelado" className="text-white text-red-400">Cancelado</SelectItem>
                           </SelectContent>
@@ -1282,7 +1658,7 @@ export default function PedidosPage() {
                     <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-white/[0.06] p-2">
                       {filteredClientes.slice(0, 5).map((c) => (
                         <button
-                          key={c.id}
+                          key={`cli-${c.id}`}
                           onClick={() => {
                             setSelectedCliente(c);
                             setClientSearch("");
@@ -1297,6 +1673,32 @@ export default function PedidosPage() {
                           <p className="text-xs text-white/50">{c.telefone || c.email}</p>
                         </button>
                       ))}
+                    </div>
+                  )}
+
+                  {clientSearch && filteredProfiles.length > 0 && (
+                    <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-white/[0.06] p-2">
+                      <p className="px-2 py-1 text-[10px] text-white/30 uppercase">Perfis cadastrados</p>
+                      {filteredProfiles.slice(0, 5).map((p) => {
+                        const hasCliente = clientes.some((c) => c.user_id === p.id);
+                        return (
+                          <button
+                            key={`prof-${p.id}`}
+                            onClick={() => selectProfileAsClient(p)}
+                            className="flex w-full items-center justify-between rounded-lg p-2 text-left transition-colors hover:bg-white/[0.04]"
+                          >
+                            <div>
+                              <p className="text-sm text-white">{p.full_name}</p>
+                              <p className="text-xs text-white/50">{p.phone}</p>
+                            </div>
+                            {hasCliente ? (
+                              <span className="text-[10px] text-green-400">Vinculado</span>
+                            ) : (
+                              <span className="text-[10px] text-[#C9A84C]">Criar cliente</span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
 
@@ -1368,8 +1770,15 @@ export default function PedidosPage() {
                 <Input
                   value={serviceSearch}
                   onChange={(e) => setServiceSearch(e.target.value)}
-                  placeholder="Buscar serviço..."
+                  placeholder="Buscar ou digitar serviço..."
                   className="rounded-xl border-white/10 bg-white/[0.02] pl-10 text-white"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && serviceSearch.trim()) {
+                      e.preventDefault();
+                      parseItemsInput(serviceSearch, "servico");
+                      setServiceSearch("");
+                    }
+                  }}
                 />
               </div>
 
@@ -1378,7 +1787,7 @@ export default function PedidosPage() {
                   {filteredServices.slice(0, 5).map((s) => (
                     <button
                       key={s.id}
-                      onClick={() => addServiceToOrder(s)}
+                      onClick={() => { addServiceToOrder(s); setServiceSearch(""); }}
                       className="flex w-full items-center justify-between rounded-lg p-2 transition-colors hover:bg-white/[0.04]"
                     >
                       <div className="text-left">
@@ -1406,6 +1815,13 @@ export default function PedidosPage() {
                   onChange={(e) => setProductSearch(e.target.value)}
                   placeholder="Buscar produto..."
                   className="rounded-xl border-white/10 bg-white/[0.02] pl-10 text-white"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && productSearch.trim()) {
+                      e.preventDefault();
+                      parseItemsInput(productSearch, "produto");
+                      setProductSearch("");
+                    }
+                  }}
                 />
               </div>
 
@@ -1414,7 +1830,7 @@ export default function PedidosPage() {
                   {filteredProducts.slice(0, 5).map((p) => (
                     <button
                       key={p.id}
-                      onClick={() => addProductToOrder(p)}
+                      onClick={() => { addProductToOrder(p); setProductSearch(""); }}
                       disabled={p.stock <= 0}
                       className="flex w-full items-center justify-between rounded-lg p-2 transition-colors hover:bg-white/[0.04] disabled:opacity-50"
                     >
@@ -1498,7 +1914,7 @@ export default function PedidosPage() {
             {/* Payment Method */}
             <div className="space-y-2">
               <Label className="text-white/70">Método de Pagamento</Label>
-              <Select value={orderPaymentMethod} onValueChange={setOrderPaymentMethod}>
+              <Select value={orderPaymentMethod || undefined} onValueChange={setOrderPaymentMethod}>
                 <SelectTrigger className="rounded-xl border-white/10 bg-white/[0.02] text-white">
                   <SelectValue placeholder="Selecione (opcional)" />
                 </SelectTrigger>
@@ -1529,6 +1945,17 @@ export default function PedidosPage() {
                 value={orderNotes}
                 onChange={(e) => setOrderNotes(e.target.value)}
                 placeholder="Observações do pedido..."
+                className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+              />
+            </div>
+
+            {/* Scheduled Date */}
+            <div className="space-y-2">
+              <Label className="text-white/70">Data de Início</Label>
+              <Input
+                type="date"
+                value={orderScheduledDate}
+                onChange={(e) => setOrderScheduledDate(e.target.value)}
                 className="rounded-xl border-white/10 bg-white/[0.02] text-white"
               />
             </div>
@@ -1596,7 +2023,7 @@ export default function PedidosPage() {
 
                 <div className="space-y-2">
                   <Label className="text-white/70">Método</Label>
-                  <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                  <Select value={paymentMethod || undefined} onValueChange={setPaymentMethod}>
                     <SelectTrigger className="rounded-xl border-white/10 bg-white/[0.02] text-white">
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
@@ -1644,20 +2071,22 @@ export default function PedidosPage() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-white">
-              {selectedItem?.completed_at ? "Editar Serviço" : "Dados do Serviço"}
+              {selectedItem?.item_type === "produto" ? "Dados do Produto" : (selectedItem?.completed_at ? "Editar Serviço" : "Dados do Serviço")}
             </DialogTitle>
             <DialogDescription className="text-white/60">
-              {selectedItem?.completed_at
-                ? "Atualize os dados deste serviço concluído"
-                : "Preencha os detalhes do serviço"}
+              {selectedItem?.item_type === "produto"
+                ? "Preencha os detalhes do produto"
+                : (selectedItem?.completed_at
+                  ? "Atualize os dados deste serviço concluído"
+                  : "Preencha os detalhes do serviço")}
             </DialogDescription>
           </DialogHeader>
 
           {selectedItem && (
             <div className="space-y-4">
-              <div className="rounded-lg bg-[#E30613]/10 p-3">
+              <div className={`rounded-lg p-3 ${selectedItem.item_type === "produto" ? "bg-[#C9A84C]/10" : "bg-[#E30613]/10"}`}>
                 <p className="font-medium text-white">{selectedItem.item_name}</p>
-                <p className="text-xs text-white/50">Serviço {selectedItem.service_type}</p>
+                <p className="text-xs text-white/50">{selectedItem.item_type === "produto" ? "Produto" : `Serviço ${selectedItem.service_type}`}</p>
               </div>
 
               <div className="space-y-3">
@@ -1728,10 +2157,96 @@ export default function PedidosPage() {
                   <p className="text-[10px] text-white/30">Máximo 4 fotos</p>
                 </div>
 
-                {!selectedItem.completed_at && (
+                {/* TESTE FINAL - só para serviços prontos/concluídos */}
+                {selectedItem.item_type === "servico" && ["pronta", "concluido", "entregue"].includes(selectedItem.status || "pendente") && (
+                <div className="rounded-lg bg-blue-500/10 p-3">
+                  <h4 className="font-semibold text-white mb-3">TESTE FINAL</h4>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {[
+                      { key: "equipamentoLigado", label: "Equipamento ligado após reparo" },
+                      { key: "funcaoPrincipal", label: "Função principal testada" },
+                      { key: "funcoesSecundarias", label: "Funções secundárias testadas" },
+                      { key: "pecasSubstituidas", label: "Peças substituídas testadas" },
+                      { key: "funcionandoNormalmente", label: "Equipamento funcionando normalmente" },
+                    ].map((item) => {
+                      const key = item.key as keyof typeof testeFinal;
+                      return (
+                        <label key={item.key} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={testeFinal[key]}
+                            onChange={(e) => setTesteFinal(prev => ({ ...prev, [key]: e.target.checked }))}
+                            className="h-4 w-4 rounded border-white/30 bg-white/[0.02] text-green-500 focus:ring-green-500"
+                          />
+                          <span className="text-xs text-white/80">{item.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+                )}
+
+                {/* ENTREGA DO EQUIPAMENTO - só para serviços prontos/concluídos */}
+                {selectedItem.item_type === "servico" && ["pronta", "concluido", "entregue"].includes(selectedItem.status || "pendente") && (
+                <div className="rounded-lg bg-green-500/10 p-3">
+                  <h4 className="font-semibold text-white mb-3">ENTREGA DO EQUIPAMENTO</h4>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 mb-3">
+                    {[
+                      { key: "equipamentoEntregue", label: "Equipamento entregue" },
+                      { key: "acessoriosConferidos", label: "Acessórios conferidos" },
+                      { key: "equipamentoTestado", label: "Equipamento testado" },
+                      { key: "pagamentoRegistrado", label: "Pagamento registrado" },
+                      { key: "osEnviada", label: "O.S. enviada ao cliente" },
+                      { key: "garantiaDisponibilizada", label: "Garantia disponibilizada" },
+                    ].map((item) => {
+                      const key = item.key as keyof typeof entregaEquipamento;
+                      return (
+                        <label key={item.key} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!entregaEquipamento[key]}
+                            onChange={(e) => setEntregaEquipamento(prev => ({ ...prev, [key]: e.target.checked }))}
+                            className="h-4 w-4 rounded border-white/30 bg-white/[0.02] text-[#C9A84C] focus:ring-[#C9A84C]"
+                          />
+                          <span className="text-xs text-white/80">{item.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-white/70">Data de entrega</Label>
+                      <input
+                        type="date"
+                        value={entregaEquipamento.dataEntrega}
+                        onChange={(e) => setEntregaEquipamento(prev => ({ ...prev, dataEntrega: e.target.value }))}
+                        className="w-full rounded-xl border-white/10 bg-white/[0.02] p-2 text-sm text-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-white/70">Hora</Label>
+                      <input
+                        type="time"
+                        value={entregaEquipamento.horaEntrega}
+                        onChange={(e) => setEntregaEquipamento(prev => ({ ...prev, horaEntrega: e.target.value }))}
+                        className="w-full rounded-xl border-white/10 bg-white/[0.02] p-2 text-sm text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+                )}
+
+                {!selectedItem.completed_at && selectedItem.item_type === "servico" && (
                   <div className="rounded-lg bg-blue-500/10 p-3">
                     <p className="text-xs text-blue-400">
-                      Salve os dados primeiro. Depois clique em "Concluir" quando o serviço estiver pronto.
+                      Salve os dados primeiro. TESTE FINAL e ENTREGA aparecem quando o serviço estiver Pronto ou Concluído.
+                    </p>
+                  </div>
+                )}
+                {!selectedItem.completed_at && selectedItem.item_type === "produto" && (
+                  <div className="rounded-lg bg-[#C9A84C]/10 p-3">
+                    <p className="text-xs text-[#C9A84C]">
+                      Preencha os dados do produto e clique em &quot;Salvar Dados&quot;.
                     </p>
                   </div>
                 )}

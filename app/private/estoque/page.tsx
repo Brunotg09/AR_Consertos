@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import Image from "next/image";
 import {
   Plus,
   Search,
@@ -17,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { CategoryCombobox } from "@/components/category-combobox";
 import {
   Dialog,
   DialogContent,
@@ -49,6 +51,9 @@ interface Product {
   category: string | null;
   description: string | null;
   price: number;
+  cost_price: number | null;
+  margin_percentage: number | null;
+  discount_percentage: number | null;
   stock: number;
   condition: string | null;
   images: string[] | null;
@@ -87,6 +92,9 @@ export default function EstoquePage() {
     category: "",
     description: "",
     price: "",
+    cost_price: "",
+    margin_percentage: "0",
+    discount_percentage: "0",
     stock: "",
     condition: "",
     active: true,
@@ -120,6 +128,14 @@ export default function EstoquePage() {
       p.category?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const allCategories = useMemo(() => {
+    const cats = new Set<string>();
+    products.forEach((p) => {
+      if (p.category) cats.add(p.category);
+    });
+    return Array.from(cats);
+  }, [products]);
+
   const lowStockProducts = products.filter((p) => p.stock < 3 && p.active);
 
   const resetForm = () => {
@@ -128,6 +144,9 @@ export default function EstoquePage() {
       category: "",
       description: "",
       price: "",
+      cost_price: "",
+      margin_percentage: "0",
+      discount_percentage: "0",
       stock: "",
       condition: "",
       active: true,
@@ -153,6 +172,9 @@ export default function EstoquePage() {
       category: product.category || "",
       description: product.description || "",
       price: product.price.toString(),
+      cost_price: product.cost_price?.toString() || "",
+      margin_percentage: product.margin_percentage?.toString() || "0",
+      discount_percentage: product.discount_percentage?.toString() || "0",
       stock: product.stock.toString(),
       condition: product.condition || "",
       active: product.active,
@@ -214,11 +236,24 @@ export default function EstoquePage() {
     setSaving(true);
 
     try {
+      const price = formData.price ? parseFloat(formData.price) : 0;
+      const costPrice = formData.cost_price ? parseFloat(formData.cost_price) : 0;
+      const discountPct = formData.discount_percentage ? parseFloat(formData.discount_percentage) : 0;
+
+      // Always use manual price as the selling price
+      const finalPriceValue = price;
+
+      // Auto-calculate margin from price and cost
+      const autoMargin = costPrice > 0 && price > 0 ? ((price - costPrice) / costPrice) * 100 : 0;
+
       const productData = {
         name: formData.name,
         category: formData.category || null,
         description: formData.description || null,
-        price: parseFloat(formData.price),
+        price: finalPriceValue,
+        cost_price: costPrice,
+        margin_percentage: Math.round(autoMargin),
+        discount_percentage: Math.round(discountPct),
         stock: parseInt(formData.stock, 10),
         condition: formData.condition || null,
         images: formImages.length > 0 ? formImages : null,
@@ -370,9 +405,11 @@ export default function EstoquePage() {
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         {product.images && product.images.length > 0 ? (
-                          <img
+                          <Image
                             src={product.images[0]}
                             alt={product.name}
+                            width={40}
+                            height={40}
                             className="h-10 w-10 rounded-lg object-cover"
                           />
                         ) : (
@@ -459,9 +496,11 @@ export default function EstoquePage() {
               <div className="flex flex-wrap gap-3">
                 {formImages.map((img, index) => (
                   <div key={index} className="relative">
-                    <img
+                    <Image
                       src={img}
                       alt={`Imagem ${index + 1}`}
+                      width={80}
+                      height={80}
                       className="h-20 w-20 rounded-lg object-cover"
                     />
                     <button
@@ -509,11 +548,11 @@ export default function EstoquePage() {
                 <Label htmlFor="category" className="text-white/70">
                   Categoria
                 </Label>
-                <Input
-                  id="category"
+                <CategoryCombobox
                   value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+                  onChange={(value) => setFormData({ ...formData, category: value })}
+                  categories={allCategories}
+                  placeholder="Selecione ou digite uma categoria..."
                 />
               </div>
             </div>
@@ -533,12 +572,13 @@ export default function EstoquePage() {
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="price" className="text-white/70">
-                  Preço *
+                  Preço de Venda *
                 </Label>
                 <Input
                   id="price"
                   type="number"
                   step="0.01"
+                  placeholder="Digitado ou calculado"
                   value={formData.price}
                   onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                   required
@@ -580,6 +620,119 @@ export default function EstoquePage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* Cost / Margin / Discount — Admin only */}
+            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-[#C9A84C]" />
+                <span className="text-xs font-medium text-white/70">Gestão de Custos e Margem (Admin)</span>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="cost_price" className="text-white/70">
+                    Valor de Custo (R$)
+                  </Label>
+                  <Input
+                    id="cost_price"
+                    type="number"
+                    step="0.01"
+                    placeholder="0,00"
+                    value={formData.cost_price}
+                    onChange={(e) => setFormData({ ...formData, cost_price: e.target.value })}
+                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="margin_percentage" className="text-white/70">
+                    % de Margem
+                  </Label>
+                  <Input
+                    id="margin_percentage"
+                    type="number"
+                    min="0"
+                    max="9999"
+                    placeholder="0"
+                    value={formData.margin_percentage}
+                    onChange={(e) => setFormData({ ...formData, margin_percentage: e.target.value })}
+                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="discount_percentage" className="text-white/70">
+                    % de Desconto
+                  </Label>
+                  <Input
+                    id="discount_percentage"
+                    type="number"
+                    min="0"
+                    max="100"
+                    placeholder="0"
+                    value={formData.discount_percentage}
+                    onChange={(e) => setFormData({ ...formData, discount_percentage: e.target.value })}
+                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+                  />
+                </div>
+              </div>
+
+              {/* Computed breakdown */}
+              {(formData.price && !isNaN(parseFloat(formData.price))) || (formData.cost_price && !isNaN(parseFloat(formData.cost_price))) ? (
+                <div className="border-t border-white/[0.06] pt-3 space-y-2 text-sm">
+                  {(() => {
+                    const price = parseFloat(formData.price) || 0;
+                    const cost = parseFloat(formData.cost_price) || 0;
+                    const discount = parseFloat(formData.discount_percentage) || 0;
+
+                    // Auto-calculate margin from price and cost
+                    const autoMargin = cost > 0 && price > 0 ? ((price - cost) / cost) * 100 : 0;
+                    const marginDisplay = cost > 0 && price > 0 ? autoMargin : (parseFloat(formData.margin_percentage) || 0);
+
+                    const discountValue = price * (discount / 100);
+                    const priceWithDiscount = price - discountValue;
+                    const profit = cost > 0 ? price - cost : 0;
+
+                    return (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-white/50">Preço de Venda:</span>
+                          <span className="text-white font-medium">{formatCurrency(price)}</span>
+                        </div>
+                        {cost > 0 && (
+                          <>
+                            <div className="flex justify-between">
+                              <span className="text-white/50">Valor de Custo:</span>
+                              <span className="text-white font-medium">{formatCurrency(cost)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-white/50">Margem Calculada:</span>
+                              <span className="text-[#8B5CF6] font-medium">{autoMargin > 0 ? `${autoMargin.toFixed(1)}%` : "—"}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-white/50">Lucro (Preço - Custo):</span>
+                              <span className="text-green-400 font-medium">{formatCurrency(profit)}</span>
+                            </div>
+                          </>
+                        )}
+                        {discount > 0 && (
+                          <>
+                            <div className="flex justify-between">
+                              <span className="text-white/50">Desconto ({discount}%):</span>
+                              <span className="text-[#C9A84C] font-medium">- {formatCurrency(discountValue)}</span>
+                            </div>
+                            <div className="flex justify-between border-t border-white/[0.04] pt-1">
+                              <span className="text-white/70 font-medium">Preço com Desconto:</span>
+                              <span className="text-[#E30613] font-bold">{formatCurrency(priceWithDiscount)}</span>
+                            </div>
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              ) : null}
             </div>
 
             <div className="flex items-center gap-2">

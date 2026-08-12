@@ -157,7 +157,8 @@ export default function CarrinhoPage() {
                         <span className="min-w-[1.5rem] text-center text-sm text-white">{item.quantity}</span>
                         <button
                           onClick={() => updateProductQuantity(item.id, item.quantity + 1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 text-white/70 transition-all hover:bg-white/[0.04]"
+                          disabled={item.quantity >= item.maxStock}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 text-white/70 transition-all hover:bg-white/[0.04] disabled:opacity-30"
                         >
                           <Plus className="h-3 w-3" />
                         </button>

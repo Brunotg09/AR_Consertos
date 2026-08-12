@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { toast } from "sonner";
 
 export interface CartServiceItem {
   id: string;
@@ -26,6 +27,7 @@ export interface CartProductItem {
   name: string;
   price: number;
   quantity: number;
+  maxStock: number;
   image: string | null;
   condition: string | null;
   category: string | null;
@@ -43,6 +45,7 @@ interface CartContextValue {
     image: string | null;
     condition: string | null;
     category: string | null;
+    maxStock: number;
   }) => void;
   removeItem: (id: string) => void;
   updateProductQuantity: (id: string, quantity: number) => void;
@@ -108,18 +111,30 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     image: string | null;
     condition: string | null;
     category: string | null;
+    maxStock: number;
   }) => {
     setItems((prev) => {
       const existing = prev.find(
         (i) => i.type === "product" && i.productId === product.id
       ) as CartProductItem | undefined;
+      
+      const currentQty = existing?.quantity || 0;
+      const newQty = currentQty + 1;
+      
+      // Validação de estoque
+      if (newQty > product.maxStock) {
+        toast.error(`Máximo ${product.maxStock} unidade(s) disponível(is) em estoque`);
+        return prev;
+      }
+      
       if (existing) {
         return prev.map((i) =>
           i.id === existing.id && i.type === "product"
-            ? { ...(i as CartProductItem), quantity: (i as CartProductItem).quantity + 1 }
+            ? { ...(i as CartProductItem), quantity: newQty }
             : i
         );
       }
+      
       return [
         ...prev,
         {
@@ -129,6 +144,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           name: product.name,
           price: product.price,
           quantity: 1,
+          maxStock: product.maxStock,
           image: product.image,
           condition: product.condition,
           category: product.category,
@@ -149,7 +165,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setItems((prev) =>
       prev.map((i) =>
         i.id === id && i.type === "product"
-          ? { ...(i as CartProductItem), quantity }
+          ? { 
+              ...(i as CartProductItem), 
+              quantity: Math.min(quantity, (i as CartProductItem).maxStock) 
+            }
           : i
       )
     );

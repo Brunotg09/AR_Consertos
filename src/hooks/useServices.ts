@@ -50,9 +50,8 @@ export function useServices(options?: { activeOnly?: boolean; type?: string }) {
         setError(null);
       }
     } catch (err) {
-      console.error("Error fetching services:", err);
       if (mountedRef.current) {
-        setError(err instanceof Error ? err.message : "Erro ao buscar serviços");
+        setError("Erro ao buscar serviços");
         setServices([]);
       }
     } finally {
@@ -66,20 +65,30 @@ export function useServices(options?: { activeOnly?: boolean; type?: string }) {
     return () => { mountedRef.current = false; };
   }, [fetchServices]);
 
-  const addService = async (service: Omit<ServiceItem, "id" | "created_at" | "updated_at">) => {
+  const addService = async (service: Omit<ServiceItem, "id" | "created_at" | "updated_at" | "service_id"> & Partial<Pick<ServiceItem, "service_id">>) => {
     try {
+      const service_id = service.service_id || generateServiceId(service.name);
       const { error } = await supabase
         .from("services")
-        .insert([service]);
+        .insert([{ ...service, service_id }]);
 
       if (error) throw error;
       await fetchServices();
       return { data: null, error: null };
     } catch (err) {
-      console.error("Error adding service:", err);
-      return { data: null, error: err instanceof Error ? err.message : "Erro ao adicionar serviço" };
+      return { data: null, error: "Erro ao adicionar serviço" };
     }
   };
+
+  function generateServiceId(name: string): string {
+    const slug = (name || "service")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return `svc-${slug}-${Date.now()}`;
+  }
 
   const updateService = async (id: number, updates: Partial<ServiceItem>) => {
     try {
@@ -92,8 +101,7 @@ export function useServices(options?: { activeOnly?: boolean; type?: string }) {
       await fetchServices();
       return { data: null, error: null };
     } catch (err) {
-      console.error("Error updating service:", err);
-      return { data: null, error: err instanceof Error ? err.message : "Erro ao atualizar serviço" };
+      return { data: null, error: "Erro ao atualizar serviço" };
     }
   };
 
@@ -104,8 +112,7 @@ export function useServices(options?: { activeOnly?: boolean; type?: string }) {
       setServices((prev) => prev.filter((s) => s.id !== id));
       return { error: null };
     } catch (err) {
-      console.error("Error deleting service:", err);
-      return { error: err instanceof Error ? err.message : "Erro ao deletar serviço" };
+      return { error: "Erro ao deletar serviço" };
     }
   };
 

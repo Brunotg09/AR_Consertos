@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/hooks/useAuth";
-import { generateOSPDF, generateSingleItemOSPDF, type PDFOrder } from "@/lib/generateOSPDF";
+import { generateOSPDF, generateSingleItemOSPDF, type PDFOrder, type PDFCliente } from "@/lib/generateOSPDF";
 import { supabase } from "@/lib/supabase";
 import { useFloatingWidget } from "@/components/FloatingWidget";
 import {
@@ -277,9 +277,32 @@ export default function HistoricoPage() {
       order_payment_method: order.order_payment_method,
       order_total: order.order_total,
       order_created_at: order.order_created_at,
-      items: order.items,
+      order_notes: null,
+      order_updated_at: null,
+      items: order.items.map(item => ({
+        ...item,
+        item_type: item.item_type as "servico" | "produto",
+        status: item.item_status || null,
+      })),
     };
-    generateOSPDF(pdfOrder, clienteName);
+    const clienteInfo: PDFCliente = {
+      nome: clienteName,
+      cpf: null,
+      telefone: null,
+      whatsapp: null,
+      email: null,
+      endereco: null,
+      forma_atendimento: null,
+    };
+    const empresaInfo = {
+      nome: "A.R. Consertos",
+      cnpj: "(79) 99944-6596",
+      endereco: "Itabaiana/SE",
+      telefone: "(79) 99944-6596",
+      email: "contato@arconsertos.com.br",
+      site: "www.arconsertos.com.br",
+    };
+    generateOSPDF(pdfOrder, clienteInfo, empresaInfo);
   };
 
   const handleGenerateItemPDF = (order: Order, item: OrderItem) => {
@@ -289,9 +312,46 @@ export default function HistoricoPage() {
       order_payment_method: order.order_payment_method,
       order_total: order.order_total,
       order_created_at: order.order_created_at,
+      order_notes: null,
+      order_updated_at: null,
       items: [],
     };
-    generateSingleItemOSPDF(pdfOrder, item, clienteName);
+    const pdfItem = {
+      item_type: item.item_type,
+      item_name: item.item_name,
+      item_service_type: item.item_service_type,
+      item_quantity: item.item_quantity,
+      item_price: item.item_price,
+      item_payment_status: item.item_payment_status,
+      item_amount_paid: item.item_amount_paid,
+      item_scheduled_date: item.item_scheduled_date,
+      item_problem_description: item.item_problem_description,
+      item_diagnosis: item.item_diagnosis,
+      item_completed_at: item.item_completed_at,
+      item_warranty_expires_at: item.item_warranty_expires_at,
+      item_product_category: item.item_product_category,
+      item_product_condition: item.item_product_condition,
+      item_product_images: item.item_product_images,
+      status: item.item_status || null,
+    };
+    const clienteInfo: PDFCliente = {
+      nome: clienteName,
+      cpf: null,
+      telefone: null,
+      whatsapp: null,
+      email: null,
+      endereco: null,
+      forma_atendimento: null,
+    };
+    const empresaInfo = {
+      nome: "A.R. Consertos",
+      cnpj: "(79) 99944-6596",
+      endereco: "Itabaiana/SE",
+      telefone: "(79) 99944-6596",
+      email: "contato@arconsertos.com.br",
+      site: "www.arconsertos.com.br",
+    };
+    generateSingleItemOSPDF(pdfOrder, pdfItem, clienteInfo, empresaInfo);
   };
 
   const statusColors: Record<string, string> = {

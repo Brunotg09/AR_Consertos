@@ -1,7 +1,7 @@
 "use client";
 
 import { ServiceIcon } from "@/components/ServiceIcon";
-import { useCart } from "@/contexts/CartContext";
+import { useCart, CartProductItem } from "@/contexts/CartContext";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { useFloatingWidget } from "@/components/FloatingWidget";
@@ -33,7 +33,15 @@ export default function CheckoutPage() {
   const hasService = items.some((i) => i.type === "service");
   const hasProduct = items.some((i) => i.type === "product");
 
-  const [scheduledDate, setScheduledDate] = useState("");
+  // Pre-fill scheduled date with tomorrow-ish datetime (editable by user)
+  const getInitialScheduledDate = () => {
+    const now = new Date();
+    const d = new Date(now.getTime() + 2 * 60 * 60 * 1000); // +2h from now
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const [scheduledDate, setScheduledDate] = useState(getInitialScheduledDate);
   const [problemDescription, setProblemDescription] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"dinheiro" | "pix" | "cartao" | "">("");
@@ -70,6 +78,30 @@ export default function CheckoutPage() {
     }
 
     setLoading(true);
+
+    const productItems = items.filter((i) => i.type === "product") as CartProductItem[];
+
+    // 0. Reservar estoque atomicamente (antes de criar o pedido)
+    if (productItems.length > 0) {
+      const itemsJson = JSON.stringify(
+        productItems.map((p) => ({
+          product_id: p.productId,
+          qty: p.quantity,
+        }))
+      );
+
+      const { data: reserveResult, error: reserveError } = await supabase.rpc(
+        "reserve_stock",
+        { items: itemsJson }
+      );
+
+      if (reserveError || !reserveResult?.success) {
+        const errMsg = reserveResult?.error || reserveError?.message || "Erro ao reservar estoque";
+        setError(errMsg);
+        setLoading(false);
+        return;
+      }
+    }
 
     // 1. Find or create client record for this user
     let clienteId: number | null = null;
@@ -124,6 +156,13 @@ export default function CheckoutPage() {
     if (orderError || !orderData) {
       setError("Erro ao criar pedido.");
       setLoading(false);
+      // Devolve o estoque reservado
+      if (productItems.length > 0) {
+        const releaseItems = JSON.stringify(
+          productItems.map((p) => ({ product_id: p.productId, qty: p.quantity }))
+        );
+        await supabase.rpc("release_stock", { items: releaseItems });
+      }
       return;
     }
 
@@ -164,6 +203,13 @@ export default function CheckoutPage() {
 
     if (itemsError) {
       setError("Erro ao salvar itens do pedido.");
+      // Devolve o estoque reservado
+      if (productItems.length > 0) {
+        const releaseItems = JSON.stringify(
+          productItems.map((p) => ({ product_id: p.productId, qty: p.quantity }))
+        );
+        await supabase.rpc("release_stock", { items: releaseItems });
+      }
       return;
     }
 

@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { ShoppingCart } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 
 export const metadata: Metadata = {
   title: 'Produtos Disponíveis',
@@ -18,6 +19,7 @@ interface Product {
   category: string | null;
   description: string | null;
   price: number;
+  discount_percentage: number | null;
   stock: number;
   condition: string | null;
   images: string[] | null;
@@ -80,6 +82,8 @@ export default async function ProdutosPage() {
         <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {products.map((product) => {
             const image = product.images?.[0] || null;
+            const discountPct = product.discount_percentage || 0;
+            const discountedPrice = discountPct > 0 ? product.price * (1 - discountPct / 100) : null;
             return (
               <Link
                 key={product.id}
@@ -95,11 +99,12 @@ export default async function ProdutosPage() {
                 {/* Imagem */}
                 <div className="relative h-[200px] w-full overflow-hidden">
                   {image ? (
-                    <img
+                    <Image
                       src={image}
                       alt={product.name}
+                      fill
                       className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      loading="lazy"
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center" style={{ backgroundColor: "rgba(255,255,255,0.03)" }}>
@@ -118,14 +123,28 @@ export default async function ProdutosPage() {
                   <h3 className="mt-1 font-montserrat text-sm font-bold text-white">
                     {product.name}
                   </h3>
-                  <div className="mt-2 flex items-center justify-between">
-                    <span className="font-oswald text-lg font-bold" style={{ color: "#E30613" }}>
-                      R$ {Number(product.price).toFixed(2).replace(".", ",")}
-                    </span>
-                    <span className="text-[10px]" style={{ color: "#888888" }}>
-                      {product.stock > 0 ? `${product.stock} em estoque` : "Indisponível"}
-                    </span>
-                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                      {discountedPrice ? (
+                        <>
+                          <span className="font-oswald text-sm line-through" style={{ color: "#666666" }}>
+                            R$ {Number(product.price).toFixed(2).replace(".", ",")}
+                          </span>
+                          <span className="font-oswald text-lg font-bold" style={{ color: "#E30613" }}>
+                            R$ {Number(discountedPrice).toFixed(2).replace(".", ",")}
+                          </span>
+                          <span className="rounded-full bg-[#E30613]/20 px-1.5 py-0.5 text-[9px] font-bold text-[#E30613]">
+                            -{discountPct}%
+                          </span>
+                        </>
+                      ) : (
+                        <span className="font-oswald text-lg font-bold" style={{ color: "#E30613" }}>
+                          R$ {Number(product.price).toFixed(2).replace(".", ",")}
+                        </span>
+                      )}
+                      <span className="text-[10px]" style={{ color: "#888888" }}>
+                        {product.stock > 0 ? `${product.stock} em estoque` : "Indisponível"}
+                      </span>
+                    </div>
                 </div>
               </Link>
             );

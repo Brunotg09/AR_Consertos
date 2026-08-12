@@ -18,6 +18,7 @@ import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -167,7 +168,7 @@ export default function ClientesPage() {
       // Search for profiles with similar name, phone, or email
       const { data: profiles } = await supabase
         .from("profiles")
-        .select("id, full_name, phone, email")
+        .select("id, full_name, phone")
         .or(`full_name.ilike.%${cliente.nome}%`);
 
       // Also get user_private emails
@@ -180,7 +181,7 @@ export default function ClientesPage() {
         const privateInfo = privateData?.find((priv) => priv.id === p.id);
         return {
           ...p,
-          email: privateInfo?.email || p.email,
+          email: privateInfo?.email,
         };
       });
 
@@ -268,15 +269,54 @@ export default function ClientesPage() {
     if (!selectedCliente) return;
 
     try {
+      // Fetch the profile data to also fill client info
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("full_name, phone, address")
+        .eq("id", profileId)
+        .single();
+
+      if (profileError) throw profileError;
+
+      // Also get email from user_private
+      const { data: privateData } = await supabase
+        .from("user_private")
+        .select("email")
+        .eq("id", profileId)
+        .single();
+
+      // Map profile address to cliente format
+      const profileAddress = profile?.address as Record<string, string> | null;
+      const endereco = profileAddress ? {
+        rua: profileAddress.logradouro || null,
+        numero: profileAddress.numero || null,
+        bairro: profileAddress.bairro || null,
+        cidade: profileAddress.localidade || null,
+        estado: profileAddress.uf || null,
+        cep: profileAddress.cep || null,
+      } : null;
+
+      // Update client with profile data + link
+      const updateData: Record<string, unknown> = {
+        user_id: profileId,
+      };
+
+      if (profile?.full_name) updateData.nome = profile.full_name;
+      if (profile?.phone) updateData.telefone = profile.phone;
+      if (privateData?.email) updateData.email = privateData.email;
+      if (endereco) updateData.endereco = endereco;
+
       const { error } = await supabase
         .from("clientes")
-        .update({ user_id: profileId })
+        .update(updateData)
         .eq("id", selectedCliente.id);
+
       if (error) throw error;
 
       setLinkDialogOpen(false);
       setSelectedCliente(null);
       fetchClientes();
+      toast.success("Perfil vinculado e dados atualizados");
     } catch (error) {
       console.error("Error linking profile:", error);
       alert("Erro ao vincular perfil");
@@ -522,8 +562,10 @@ export default function ClientesPage() {
                 <MapPin className="h-4 w-4" />
                 Endereço
               </h3>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2 sm:col-span-2">
+
+              {/* Row 1: Rua + Número */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
                   <Label htmlFor="rua" className="text-white/70">
                     Rua
                   </Label>
@@ -539,16 +581,17 @@ export default function ClientesPage() {
                   <Label htmlFor="numero" className="text-white/70">
                     Número
                   </Label>
-                  <Input
-                    id="numero"
-                    value={formData.numero}
-                    onChange={(e) => setFormData({ ...formData, numero: e.target.value })}
-                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
-                  />
+<Input
+                      id="numero"
+                      value={formData.numero}
+                      onChange={(e) => setFormData({ ...formData, numero: e.target.value })}
+                      className="rounded-xl border-white/10 bg-white/[0.02] text-white max-w-[100px]"
+                    />
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-3">
+              {/* Row 2: Bairro + Cidade */}
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="bairro" className="text-white/70">
                     Bairro
@@ -565,41 +608,42 @@ export default function ClientesPage() {
                   <Label htmlFor="cidade" className="text-white/70">
                     Cidade
                   </Label>
-                  <Input
-                    id="cidade"
-                    value={formData.cidade}
-                    onChange={(e) => setFormData({ ...formData, cidade: e.target.value })}
-                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
-                  />
+<Input
+                      id="cidade"
+                      value={formData.cidade}
+                      onChange={(e) => setFormData({ ...formData, cidade: e.target.value })}
+                      className="rounded-xl border-white/10 bg-white/[0.02] text-white max-w-[150px]"
+                    />
                 </div>
+              </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="estado" className="text-white/70">
-                      Estado
-                    </Label>
-                    <Input
+              {/* Row 3: Estado + CEP */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="estado" className="text-white/70">
+                    Estado
+                  </Label>
+<Input
                       id="estado"
                       value={formData.estado}
                       onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
                       placeholder="SE"
                       maxLength={2}
-                      className="rounded-xl border-white/10 bg-white/[0.02] text-white uppercase"
+                      className="rounded-xl border-white/10 bg-white/[0.02] text-white uppercase max-w-[80px]"
                     />
-                  </div>
+                </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="cep" className="text-white/70">
-                      CEP
-                    </Label>
-                    <Input
-                      id="cep"
-                      value={formData.cep}
-                      onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
-                      placeholder="00000-000"
-                      className="rounded-xl border-white/10 bg-white/[0.02] text-white"
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cep" className="text-white/70">
+                    CEP
+                  </Label>
+                  <Input
+                    id="cep"
+                    value={formData.cep}
+                    onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
+                    placeholder="00000-000"
+                    className="rounded-xl border-white/10 bg-white/[0.02] text-white"
+                  />
                 </div>
               </div>
             </div>

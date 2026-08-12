@@ -11,12 +11,28 @@ export interface PDFOrderItem {
   item_price: number | null;
   item_payment_status: string | null;
   item_amount_paid: number | null;
+  item_scheduled_date: string | null;
   item_problem_description: string | null;
   item_diagnosis: string | null;
   item_completed_at: string | null;
   item_warranty_expires_at: string | null;
   item_product_category: string | null;
   item_product_condition: string | null;
+  item_product_images: string[] | null;
+  status: string | null;
+  teste_equipamento_ligado?: boolean;
+  teste_funcao_principal?: boolean;
+  teste_funcoes_secundarias?: boolean;
+  teste_pecas_substituidas?: boolean;
+  teste_funcionando_normalmente?: boolean;
+  entrega_equipamento_entregue?: boolean;
+  entrega_acessorios_conferidos?: boolean;
+  entrega_equipamento_testado?: boolean;
+  entrega_pagamento_registrado?: boolean;
+  entrega_os_enviada?: boolean;
+  entrega_garantia_disponibilizada?: boolean;
+  entrega_data?: string | null;
+  entrega_hora?: string | null;
 }
 
 export interface PDFOrder {
@@ -25,237 +41,392 @@ export interface PDFOrder {
   order_payment_method: string | null;
   order_total: number;
   order_created_at: string;
+  order_notes: string | null;
+  order_updated_at: string | null;
   items: PDFOrderItem[];
 }
 
-function hexToRgb(hex: string): [number, number, number] {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return [r, g, b];
+export interface PDFCliente {
+  nome: string;
+  cpf: string | null;
+  telefone: string | null;
+  whatsapp: string | null;
+  email: string | null;
+  endereco: string | null;
+  forma_atendimento: string | null;
 }
 
-export function generateOSPDF(order: PDFOrder, clienteName: string = "Cliente") {
+// Color palette - professional blues and grays, accent red/gold
+const COLORS = {
+  primary: [30, 58, 138] as [number, number, number],    // Indigo 700 - headers
+  accent: [227, 6, 19] as [number, number, number],       // Brand red
+  gold: [201, 168, 76] as [number, number, number],      // Gold
+  dark: [26, 26, 26] as [number, number, number],        // Near black - text
+  light: [248, 249, 252] as [number, number, number],    // Light gray - backgrounds
+  border: [226, 232, 240] as [number, number, number],   // Border gray
+  success: [34, 197, 94] as [number, number, number],    // Green
+  warning: [245, 158, 16] as [number, number, number],   // Orange
+  muted: [163, 163, 163] as [number, number, number],    // Gray text
+};
+
+export function generateOSPDF(
+  order: PDFOrder,
+  cliente: PDFCliente,
+  empresaInfo: { nome: string; cnpj: string; endereco: string; telefone: string; email: string; site: string }
+) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 15;
+  let y = margin;
 
-  const red = hexToRgb("#E30613");
-  const purple = hexToRgb("#8B5CF6");
-  const gold = hexToRgb("#C9A84C");
-  const dark = hexToRgb("#1a1a1a");
-  const white: [number, number, number] = [255, 255, 255];
+  const addHeader = () => {
+    doc.setFillColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+    doc.rect(0, 0, pageW, 35, "F");
 
-  // --- CABEÇALHO ---
-  doc.setFillColor(dark[0], dark[1], dark[2]);
-  doc.rect(0, 0, pageW, 35, "F");
+    doc.setTextColor(COLORS.light[0], COLORS.light[1], COLORS.light[2]);
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text(empresaInfo.nome || "A.R CONSERTOS", margin, 14);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text("TÉCNICO ELETRODOMÉSTICOS · INVERTER", margin, 20);
+    doc.text(`${empresaInfo.endereco || "Itabaiana/SE"} · ${empresaInfo.telefone || "(79) 99944-6596"}`, margin, 25);
+    doc.text(empresaInfo.email || "@A.RCONSERTOS", margin, 30);
 
-  // Logo placeholder (texto)
-  doc.setTextColor(white[0], white[1], white[2]);
-  doc.setFontSize(18);
-  doc.setFont("helvetica", "bold");
-  doc.text("A.R CONSERTO", margin, 14);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text("TÉCNICO ELETRODOMÉSTICOS · INVERTER", margin, 20);
-  doc.text("Itabaiana/SE · (79) 99944-6596", margin, 25);
-  doc.text("@A.RCONSERTOS", margin, 30);
+    doc.setTextColor(COLORS.accent[0], COLORS.accent[1], COLORS.accent[2]);
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text(`O.S. #${order.order_id.slice(0, 8).toUpperCase()}`, pageW - margin, 18, { align: "right" });
+    doc.setTextColor(COLORS.light[0], COLORS.light[1], COLORS.light[2]);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Emitido em: ${new Date().toLocaleDateString("pt-BR")}`, pageW - margin, 24, { align: "right" });
+    doc.text(`Pedido: ${new Date(order.order_created_at).toLocaleDateString("pt-BR")}`, pageW - margin, 28, { align: "right" });
+  };
 
-  // Número da O.S.
-  doc.setTextColor(red[0], red[1], red[2]);
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.text(`O.S. #${order.order_id.slice(0, 8).toUpperCase()}`, pageW - margin, 18, { align: "right" });
-  doc.setTextColor(white[0], white[1], white[2]);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.text(`Emitido em: ${new Date().toLocaleDateString("pt-BR")}`, pageW - margin, 24, { align: "right" });
-  doc.text(`Pedido: ${new Date(order.order_created_at).toLocaleDateString("pt-BR")}`, pageW - margin, 28, { align: "right" });
+  addHeader();
+  y = 42;
 
-  // --- DADOS DO CLIENTE ---
-  let y = 42;
-  doc.setTextColor(dark[0], dark[1], dark[2]);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("DADOS DO CLIENTE", margin, y);
-  y += 6;
+  let sectionNum = 0;
 
-  doc.setDrawColor(200, 200, 200);
-  doc.setLineWidth(0.2);
-  doc.line(margin, y, pageW - margin, y);
-  y += 5;
+  const addSectionTitle = (title: string) => {
+    if (y > pageH - 12) { doc.addPage(); addHeader(); y = 42; }
+    sectionNum += 1;
+    doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text(`${sectionNum}. ${title}`, margin, y);
+    doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
+    doc.setLineWidth(0.3);
+    doc.line(margin, y + 2, pageW - margin, y + 2);
+    y += 8;
+  };
 
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text(`Nome: ${clienteName}`, margin, y);
-  y += 5;
-  doc.text(`Status do pedido: ${order.order_status.toUpperCase()}`, margin, y);
-  y += 5;
-  doc.text(`Forma de pagamento: ${(order.order_payment_method || "N/A").toUpperCase()}`, margin, y);
-  y += 5;
-  doc.text(`Total: R$ ${Number(order.order_total).toFixed(2).replace(".", ",")}`, margin, y);
-  y += 10;
+  const addField = (label: string, value: string | number | null | undefined, indent = 0) => {
+    const indentX = margin + indent;
+    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    const labelText = `${label}:`;
+    doc.text(labelText, indentX, y);
+    doc.setFont("helvetica", "normal");
+    const valueText = value !== null && value !== undefined ? String(value) : "-";
+    const valueX = indentX + 80;
+    const maxW = pageW - margin - valueX;
+    const lines = doc.splitTextToSize(valueText, maxW);
+    doc.text(lines, valueX, y);
+    y += lines.length * 4.5;
+  };
 
-  // --- TABELA DE ITENS ---
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("ITENS DO PEDIDO", margin, y);
-  y += 6;
+  // ─── 2. DADOS DO CLIENTE ───
+  addSectionTitle("DADOS DO CLIENTE");
+  addField("Nome", cliente.nome);
+  if (cliente.cpf) addField("CPF/CNPJ", cliente.cpf);
+  addField("Telefone", cliente.telefone || cliente.whatsapp);
+  if (cliente.email) addField("E-mail", cliente.email);
+  if (cliente.endereco) addField("Endereço", cliente.endereco);
+  y += 8;
 
-  const tableBody = order.items.map((item) => {
+  // ─── IDENTIFICAÇÃO DO EQUIPAMENTO / PRODUTO ───
+  addSectionTitle("IDENTIFICAÇÃO DO EQUIPAMENTO / PRODUTO");
+  order.items.forEach((item, idx) => {
+    if (item.item_type === "produto") {
+      addField("Produto", item.item_name, idx > 0 ? 0 : 0);
+      addField("Categoria", item.item_product_category);
+      addField("Condição", item.item_product_condition);
+      addField("Quantidade", item.item_quantity);
+      addField("Preço unitário", item.item_price ? `R$ ${Number(item.item_price).toFixed(2).replace(".", ",")}` : "-");
+    } else {
+      addField("Serviço", item.item_name, idx > 0 ? 0 : 0);
+      addField("Tipo", item.item_service_type === "inverter" ? "Inverter" : "Convencional");
+      addField("Descrição do problema", item.item_problem_description || "Não informado");
+      addField("Data/hora solicitada", item.item_scheduled_date ? new Date(item.item_scheduled_date).toLocaleString("pt-BR") : "-");
+    }
+    y += 8;
+  });
+
+  // ─── 4. DIAGNÓSTICO ───
+  const hasService = order.items.some(i => i.item_type === "servico");
+  if (hasService) {
+    addSectionTitle("DIAGNÓSTICO TÉCNICO");
+    order.items.filter(i => i.item_type === "servico").forEach(item => {
+      addField(`Item: ${item.item_name}`, "");
+      doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      const dx = margin;
+      const lines = doc.splitTextToSize(item.item_diagnosis || "Não informado", pageW - margin * 2 - 60);
+      doc.text(`Diagnóstico:`, dx, y);
+      doc.text(lines, dx + 28, y);
+      y += lines.length * 4 + 2;
+
+      // Causa identificada
+      const causaLines = doc.splitTextToSize("Causa identificada: " + (item.item_diagnosis || "A ser determinada"), pageW - margin * 2);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
+      doc.text(causaLines, dx, y);
+      y += causaLines.length * 3.5 + 2;
+    });
+    y += 8;
+  }
+
+  // ─── ORÇAMENTO ───
+  addSectionTitle("ORÇAMENTO");
+
+  const tableY = y;
+  const tableData = order.items.map(item => {
     const isService = item.item_type === "servico";
-    const tipo = isService
-      ? (item.item_service_type === "inverter" ? "Inverter" : "Convencional")
-      : (item.item_product_condition || "Produto");
     const valor = item.item_price ? `R$ ${Number(item.item_price * item.item_quantity).toFixed(2).replace(".", ",")}` : "-";
-    const pgto = isService
-      ? (item.item_payment_status || "Pendente")
-      : "Pago na compra";
+    const pgto = isService ? (item.item_payment_status || "Pendente") : "Pago na compra";
     return [
       item.item_name,
-      tipo,
-      item.item_quantity,
+      isService ? (item.item_service_type === "inverter" ? "Inverter" : "Convencional") : (item.item_product_condition || "Produto"),
+      String(item.item_quantity),
       valor,
       pgto,
     ];
   });
 
   autoTable(doc, {
-    startY: y,
-    head: [["Item", "Tipo/Condição", "Qtd", "Valor", "Pagamento"]],
-    body: tableBody,
+    startY: tableY,
+    head: [["Item", "Tipo", "Qtd", "Valor", "Pagamento"]],
+    body: tableData,
     theme: "grid",
     headStyles: {
-      fillColor: dark,
-      textColor: white,
-      fontSize: 8,
+      fillColor: COLORS.primary,
+      textColor: COLORS.light,
+      fontSize: 7,
       fontStyle: "bold",
+      cellPadding: 2,
     },
     styles: {
-      fontSize: 8,
+      fontSize: 7,
       cellPadding: 2,
-      valign: "middle",
-    },
-    columnStyles: {
-      0: { cellWidth: 60 },
-      1: { cellWidth: 35 },
-      2: { cellWidth: 15, halign: "center" },
-      3: { cellWidth: 30, halign: "right" },
-      4: { cellWidth: "auto" },
-    },
-    didParseCell: (data) => {
-      if (data.section === "body" && data.column.index === 1) {
-        const tipo = data.cell.raw as string;
-        if (tipo === "Inverter") {
-          data.cell.styles.fillColor = [purple[0], purple[1], purple[2]];
-          data.cell.styles.textColor = [purple[0], purple[1], purple[2]];
-        } else if (tipo === "Convencional") {
-          data.cell.styles.fillColor = [red[0], red[1], red[2]];
-          data.cell.styles.textColor = [red[0], red[1], red[2]];
-        } else {
-          data.cell.styles.fillColor = [gold[0], gold[1], gold[2]];
-          data.cell.styles.textColor = [gold[0], gold[1], gold[2]];
-        }
-      }
+      valign: "middle" as const,
+      textColor: COLORS.dark,
     },
     margin: { left: margin, right: margin },
   });
 
   // @ts-ignore
-  y = doc.lastAutoTable?.finalY || y + 30;
+  y = doc.lastAutoTable?.finalY || tableY + 20;
   y += 8;
 
-  // --- CERTIFICADO DE GARANTIA ---
-  if (y > pageH - 70) {
-    doc.addPage();
-    y = margin;
-  }
-
-  doc.setFillColor(240, 248, 240);
-  doc.roundedRect(margin, y, pageW - margin * 2, 28, 3, 3, "F");
-  doc.setDrawColor(68, 221, 136);
-  doc.setLineWidth(0.5);
-  doc.roundedRect(margin, y, pageW - margin * 2, 28, 3, 3, "S");
-
-  doc.setTextColor(34, 139, 34);
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  doc.text("CERTIFICADO DE GARANTIA — 90 DIAS", margin + 4, y + 7);
-  doc.setFontSize(8);
+  // Valores
+  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  doc.setFontSize(7);
   doc.setFont("helvetica", "normal");
-  doc.text(
-    "Todos os serviços de conserto possuem garantia de 90 dias a partir da data de conclusão. " +
-    "Cobertura: mesmo defeito reparado, peças substituídas e mão de obra. Não cobre: mau uso, " +
-    "quedas, infiltração ou intervenção de terceiros.",
-    margin + 4,
-    y + 13,
-    { maxWidth: pageW - margin * 2 - 8 }
-  );
-  doc.text(
-    "Para acionar a garantia, apresente este documento ou informe o número da O.S.",
-    margin + 4,
-    y + 24
-  );
-
-  y += 34;
-
-  // --- ASSINATURAS ---
-  if (y > pageH - 40) {
-    doc.addPage();
-    y = margin;
-  }
-
-  doc.setTextColor(dark[0], dark[1], dark[2]);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("ASSINATURAS", margin, y);
+  doc.text(`Subtotal: R$ ${Number(order.order_total).toFixed(2).replace(".", ",")}`, pageW - margin - 55, y);
+  y += 8;
+  doc.text(`TOTAL: R$ ${Number(order.order_total).toFixed(2).replace(".", ",")}`, pageW - margin - 55, y);
   y += 8;
 
+  // Forma de pagamento
+  doc.setFont("helvetica", "bold");
+  doc.text("Forma de pagamento:", margin, y);
+  y += 8;
+  doc.setFont("helvetica", "normal");
+  doc.text(` ${order.order_payment_method ? order.order_payment_method.toUpperCase() : "N/A"}`, margin, y);
+  y += 8;
+
+  // ─── 6. AUTORIZAÇÃO ───
+  const autSection = hasService ? 6 : sectionNum + 1;
+  addSectionTitle(`${autSection}. AUTORIZAÇÃO DO CLIENTE`);
+  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  doc.setFontSize(7.5);
+  doc.setFont("helvetica", "normal");
+  const authText = "Declaro que tive acesso ao orçamento e autorizo a execução do serviço conforme registrado nesta Ordem de Serviço. Estou ciente de que dados faltam e que o prazo começa a contar a partir da data de conclusão.";
+  const authLines = doc.splitTextToSize(authText, pageW - margin * 2);
+  doc.text(authLines, margin, y);
+  y += authLines.length * 4 + 3;
+
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "italic");
+  doc.setTextColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
+  doc.text("Nome: ________________________________  CPF: ________________________________", margin, y);
+  y += 5;
+  doc.text("Assinatura: _________________________  Data: ___/___/_______  Hora: ___:___", margin, y);
+  y += 8;
+
+  // ─── 7. SERVIÇO REALIZADO ───
+  const servSection = autSection + 1;
+  addSectionTitle(`${servSection}. SERVIÇO REALIZADO`);
+  const completedItems = order.items.filter(i => i.status === "concluido" || i.status === "pronta" || i.status === "entregue" || order.order_status === "concluido");
+  completedItems.forEach(item => {
+    addField("Item", item.item_name);
+    addField("Descrição do serviço", item.item_diagnosis || "Servico realizado conforme diagnóstico");
+    if (item.item_type === "servico") {
+      addField("Data conclusão", item.item_completed_at ? new Date(item.item_completed_at).toLocaleDateString("pt-BR") : "-");
+      addField("Técnico", "A.R Conserto");
+    }
+    y += 8;
+  });
+  if (y > pageH - 60) { doc.addPage(); addHeader(); y = 42; }
+  // ─── TESTE FINAL (só serviços) ───
+  if (hasService) {
+    if (y > pageH - 60) { doc.addPage(); addHeader(); y = 42; }
+    addSectionTitle("TESTE FINAL");
+    doc.setFontSize(7);
+    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+    const svcItems = order.items.filter(i => i.item_type === "servico");
+    const tests = [
+      { label: "Equipamento ligado após reparo", key: "teste_equipamento_ligado" },
+      { label: "Função principal testada", key: "teste_funcao_principal" },
+      { label: "Funções secundárias testadas", key: "teste_funcoes_secundarias" },
+      { label: "Peças substituídas testadas", key: "teste_pecas_substituidas" },
+      { label: "Equipamento funcionando normalmente", key: "teste_funcionando_normalmente" },
+    ];
+    tests.forEach(t => {
+      const checked = svcItems.some(i => (i as PDFOrderItem)[t.key as keyof PDFOrderItem] === true);
+      doc.text(`[${checked ? "X" : " "}] ${t.label}`, margin, y);
+      y += 5;
+    });
+    y += 8;
+  }
+
+  // ─── GARANTIA ───
+  addSectionTitle("CONDIÇÕES DE GARANTIA");
+
+  // Garantia visual
+  doc.setFillColor(245, 255, 245);
+  doc.setDrawColor(COLORS.success[0], COLORS.success[1], COLORS.success[2]);
+  doc.setLineWidth(0.5);
+  doc.roundedRect(margin, y, pageW - margin * 2, 30, 3, 3, "FD");
+  y += 5;
+
+  doc.setTextColor(COLORS.success[0], COLORS.success[1], COLORS.success[2]);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.text("CERTIFICADO DE GARANTIA", margin + 4, y);
+  y += 5;
+
+  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "normal");
+  doc.text("Prazo: 90 (noventa) dias a partir da data de conclusão do serviço.", margin + 4, y);
+  y += 8;
+  doc.text("Cobertura: mesmo defeito reparado, peças substituídas e mão de obra.", margin + 4, y);
+  y += 8;
+  doc.text("Para acionar: apresente este documento ou informe o número da O.S.", margin + 4, y);
+  y += 12;
+
+  // Texto legal completo
+  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "normal");
+  const legalText = "A A.R. Consertos observará a garantia legal aplicável aos serviços realizados, respeitando os direitos assegurados pelo Código de Defesa do Consumidor. Para serviços e produtos duráveis, será observado o prazo de 90 (noventa) dias previsto no art. 26, II, do Código de Defesa do Consumidor para reclamação de vícios aparentes ou de fácil constatação [Lei nº 8.078/1990]. Danos decorrentes de queda, impacto, mau uso, instalação inadequada, ligação elétrica inadequada, sobretensão, líquidos, umidade, oxidação, corrosão, intervenção ou reparo realizado por terceiros, ou outras causas externas, serão submetidos à avaliação técnica, sem prejuízo dos direitos assegurados pela legislação. Nenhum serviço adicional sujeito a cobrança será realizado sem prévia ciência e autorização do cliente. Esta condição de garantia não representa renúncia, exclusão ou limitação dos direitos assegurados ao consumidor pela legislação vigente.";
+  const legalLines = doc.splitTextToSize(legalText, pageW - margin * 2);
+
+  // Add more space between certificate box and legal text
+  y += 8;
+
+  // Add a subtle separator line
+  doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
+  doc.setLineWidth(0.2);
+  doc.line(margin, y, pageW - margin, y);
+  y += 8;
+
+  doc.text(legalLines, margin, y);
+  y += legalLines.length * 3.5 + 8;
+
+  // ─── ENTREGA (só serviços) ───
+  if (hasService) {
+    if (y > pageH - 80) { doc.addPage(); addHeader(); y = 42; }
+    addSectionTitle("ENTREGA DO EQUIPAMENTO");
+    const svcForEntrega = order.items.filter(i => i.item_type === "servico");
+    const entregaChecks = [
+      { label: "Equipamento entregue", key: "entrega_equipamento_entregue" },
+      { label: "Acessórios conferidos", key: "entrega_acessorios_conferidos" },
+      { label: "Equipamento testado", key: "entrega_equipamento_testado" },
+      { label: "Pagamento registrado", key: "entrega_pagamento_registrado" },
+      { label: "Ordem de Serviço enviada ao cliente", key: "entrega_os_enviada" },
+      { label: "Condições de garantia disponibilizadas", key: "entrega_garantia_disponibilizada" },
+    ];
+    doc.setFontSize(7);
+    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+    entregaChecks.forEach(item => {
+      const checked = svcForEntrega.some(i => (i as PDFOrderItem)[item.key as keyof PDFOrderItem] === true);
+      doc.text(`[${checked ? "X" : " "}] ${item.label}`, margin, y);
+      y += 5;
+    });
+    y += 8;
+    const firstSvc = svcForEntrega[0];
+    const entregaData = firstSvc?.entrega_data || null;
+    const entregaHora = firstSvc?.entrega_hora || null;
+    doc.text(`Data de entrega: ${entregaData || "___/___/_______"}  Hora: ${entregaHora || "___:___"}`, margin, y);
+    y += 8;
+  }
+  y += 8;
+
+  // ─── ASSINATURAS ───
+  addSectionTitle("ASSINATURAS");
   const sigW = (pageW - margin * 2 - 10) / 2;
 
-  // Técnico
-  doc.setDrawColor(150, 150, 150);
-  doc.line(margin, y + 15, margin + sigW, y + 15);
-  doc.setFontSize(8);
+  doc.setLineDashPattern([0], 0);
+  doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
+  doc.setLineWidth(0.3);
+  doc.line(margin, y + 12, margin + sigW, y + 12);
+  doc.setFontSize(7);
+  doc.setTextColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
+  doc.text("Técnico Responsável", margin, y + 16);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(COLORS.accent[0], COLORS.accent[1], COLORS.accent[2]);
+  doc.text("A.R Conserto", margin, y + 20);
+
   doc.setFont("helvetica", "normal");
-  doc.text("Técnico Responsável", margin, y + 20);
-  doc.text("A.R Conserto", margin, y + 24);
+  doc.setTextColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
+  doc.line(margin + sigW + 10, y + 12, margin + sigW * 2 + 10, y + 12);
+  doc.text("Cliente", margin + sigW + 10, y + 16);
+  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  doc.text(cliente.nome, margin + sigW + 10, y + 20);
 
-  // Cliente
-  doc.line(margin + sigW + 10, y + 15, margin + sigW * 2 + 10, y + 15);
-  doc.text("Cliente", margin + sigW + 10, y + 20);
-  doc.text(clienteName, margin + sigW + 10, y + 24);
+  y += 28;
 
-  y += 32;
+  // ─── CANHOTO DESTACÁVEL ───
+  if (y > pageH - 25) { doc.addPage(); addHeader(); y = margin + 10; }
 
-  // --- CANHOTO DESTACÁVEL ---
-  if (y > pageH - 35) {
-    doc.addPage();
-    y = margin;
-  }
-
-  doc.setDrawColor(red[0], red[1], red[2]);
+  doc.setDrawColor(COLORS.accent[0], COLORS.accent[1], COLORS.accent[2]);
   doc.setLineWidth(0.5);
   doc.setLineDashPattern([3, 3], 0);
   doc.line(margin, y, pageW - margin, y);
   doc.setLineDashPattern([], 0);
 
-  y += 4;
   doc.setFillColor(255, 245, 245);
-  doc.rect(margin, y, pageW - margin * 2, 22, "F");
-  doc.setDrawColor(red[0], red[1], red[2]);
-  doc.rect(margin, y, pageW - margin * 2, 22, "S");
+  doc.setDrawColor(COLORS.accent[0], COLORS.accent[1], COLORS.accent[2]);
+  doc.setLineWidth(0.5);
+  doc.rect(margin, y + 3, pageW - margin * 2, 18, "FD");
 
-  doc.setTextColor(red[0], red[1], red[2]);
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  doc.text("CANHOTO — RECORTAR", margin + 4, y + 6);
+  doc.setTextColor(COLORS.accent[0], COLORS.accent[1], COLORS.accent[2]);
   doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  doc.text("CANHOTO - RECORTAR", margin + 4, y + 8);
+  doc.setFontSize(7);
   doc.setFont("helvetica", "normal");
-  doc.text(`O.S.: ${order.order_id.slice(0, 8).toUpperCase()}`, margin + 4, y + 12);
-  doc.text(`Cliente: ${clienteName}`, margin + 4, y + 17);
-  doc.text(`Data: ${new Date(order.order_created_at).toLocaleDateString("pt-BR")}`, pageW - margin - 4, y + 12, { align: "right" });
+  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  doc.text(`O.S.: ${order.order_id.slice(0, 8).toUpperCase()}`, margin + 4, y + 13);
+  doc.text(`Cliente: ${cliente.nome}`, margin + 4, y + 17);
+  doc.text(`Data: ${new Date().toLocaleDateString("pt-BR")}`, pageW - margin - 4, y + 13, { align: "right" });
   doc.text(`Total: R$ ${Number(order.order_total).toFixed(2).replace(".", ",")}`, pageW - margin - 4, y + 17, { align: "right" });
 
   doc.save(`OS-${order.order_id.slice(0, 8).toUpperCase()}.pdf`);
@@ -264,229 +435,331 @@ export function generateOSPDF(order: PDFOrder, clienteName: string = "Cliente") 
 export function generateSingleItemOSPDF(
   order: PDFOrder,
   item: PDFOrderItem,
-  clienteName: string = "Cliente"
+  cliente: PDFCliente,
+  empresaInfo: { nome: string; cnpj: string; endereco: string; telefone: string; email: string; site: string }
 ) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 15;
+  let y = margin;
 
-  const red = hexToRgb("#E30613");
-  const purple = hexToRgb("#8B5CF6");
-  const gold = hexToRgb("#C9A84C");
-  const dark = hexToRgb("#1a1a1a");
-  const white: [number, number, number] = [255, 255, 255];
+  const accent: [number, number, number] = item.item_type === "servico"
+    ? (item.item_service_type === "inverter" ? [139, 92, 246] : COLORS.accent)
+    : COLORS.gold;
 
   const isService = item.item_type === "servico";
-  const accent = isService
-    ? (item.item_service_type === "inverter" ? purple : red)
-    : gold;
 
-  // --- CABEÇALHO ---
-  doc.setFillColor(dark[0], dark[1], dark[2]);
-  doc.rect(0, 0, pageW, 35, "F");
+  const addHeader = () => {
+    doc.setFillColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+    doc.rect(0, 0, pageW, 35, "F");
 
-  doc.setTextColor(white[0], white[1], white[2]);
-  doc.setFontSize(18);
-  doc.setFont("helvetica", "bold");
-  doc.text("A.R CONSERTO", margin, 14);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text("TÉCNICO ELETRODOMÉSTICOS · INVERTER", margin, 20);
-  doc.text("Itabaiana/SE · (79) 99944-6596", margin, 25);
-  doc.text("@A.RCONSERTOS", margin, 30);
+    doc.setTextColor(COLORS.light[0], COLORS.light[1], COLORS.light[2]);
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text(empresaInfo.nome || "A.R CONSERTOS", margin, 14);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text("TÉCNICO ELETRODOMÉSTICOS · INVERTER", margin, 20);
+    doc.text(`${empresaInfo.endereco || "Itabaiana/SE"} · ${empresaInfo.telefone || "(79) 99944-6596"}`, margin, 25);
+    doc.text(empresaInfo.email || "@A.RCONSERTOS", margin, 30);
 
-  // Número da O.S.
-  doc.setTextColor(red[0], red[1], red[2]);
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.text(`O.S. #${order.order_id.slice(0, 8).toUpperCase()}`, pageW - margin, 18, { align: "right" });
-  doc.setTextColor(white[0], white[1], white[2]);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.text(`Emitido em: ${new Date().toLocaleDateString("pt-BR")}`, pageW - margin, 24, { align: "right" });
-  doc.text(`Item: ${item.item_name}`, pageW - margin, 28, { align: "right" });
+    doc.setTextColor(accent[0], accent[1], accent[2]);
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text(`O.S. #${order.order_id.slice(0, 8).toUpperCase()}`, pageW - margin, 18, { align: "right" });
+    doc.setTextColor(COLORS.light[0], COLORS.light[1], COLORS.light[2]);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Emitido em: ${new Date().toLocaleDateString("pt-BR")}`, pageW - margin, 24, { align: "right" });
+    doc.text(`Pedido: ${new Date(order.order_created_at).toLocaleDateString("pt-BR")}`, pageW - margin, 28, { align: "right" });
+  };
 
-  // --- DADOS DO CLIENTE ---
-  let y = 42;
-  doc.setTextColor(dark[0], dark[1], dark[2]);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("DADOS DO CLIENTE", margin, y);
-  y += 6;
+  addHeader();
+  y = 42;
 
-  doc.setDrawColor(200, 200, 200);
-  doc.setLineWidth(0.2);
-  doc.line(margin, y, pageW - margin, y);
-  y += 5;
+  let secCount = 0;
 
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text(`Nome: ${clienteName}`, margin, y);
-  y += 5;
-  doc.text(`Status: ${order.order_status.toUpperCase()}`, margin, y);
-  y += 5;
-  doc.text(`Pagamento: ${(order.order_payment_method || "N/A").toUpperCase()}`, margin, y);
-  y += 10;
+  const addSectionTitle = (title: string) => {
+    secCount += 1;
+    if (y > pageH - 12) { doc.addPage(); addHeader(); y = 42; }
+    doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text(`${secCount}. ${title}`, margin, y);
+    doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
+    doc.setLineWidth(0.3);
+    doc.line(margin, y + 2, pageW - margin, y + 2);
+    y += 8;
+  };
 
-  // --- DADOS DO ITEM ---
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("DADOS DO SERVIÇO/PRODUTO", margin, y);
-  y += 6;
+  const addField = (label: string, value: string | number | null | undefined) => {
+    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    const labelText = `${label}:`;
+    doc.text(labelText, margin, y);
+    doc.setFont("helvetica", "normal");
+    const valueText = value !== null && value !== undefined ? String(value) : "-";
+    const valueX = margin + 80;
+    const maxW = pageW - margin - valueX;
+    const lines = doc.splitTextToSize(valueText, maxW);
+    doc.text(lines, valueX, y);
+    y += lines.length * 4.5;
+  };
 
-  // Box colorido do item
-  doc.setFillColor(accent[0], accent[1], accent[2]);
-  doc.roundedRect(margin, y, pageW - margin * 2, isService ? 48 : 35, 2, 2, "F");
+  // ─── DADOS DO CLIENTE ───
+  addSectionTitle("DADOS DO CLIENTE");
+  addField("Nome", cliente.nome);
+  if (cliente.cpf) addField("CPF/CNPJ", cliente.cpf);
+  addField("Telefone", cliente.telefone || cliente.whatsapp);
+  if (cliente.email) addField("E-mail", cliente.email);
+  if (cliente.endereco) addField("Endereço", cliente.endereco);
+  y += 8;
 
-  y += 6;
-  doc.setTextColor(dark[0], dark[1], dark[2]);
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  doc.text(`Item: ${item.item_name}`, margin + 4, y);
-  y += 5;
-
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  const tipo = isService
-    ? (item.item_service_type === "inverter" ? "Inverter" : "Convencional")
-    : (item.item_product_condition || "Produto");
-  doc.text(`Tipo: ${tipo}`, margin + 4, y);
-  y += 5;
-  doc.text(`Quantidade: ${item.item_quantity}`, margin + 4, y);
-  y += 5;
-
+  // ─── IDENTIFICAÇÃO DO EQUIPAMENTO ───
+  addSectionTitle("IDENTIFICAÇÃO DO EQUIPAMENTO");
+  addField("Item", item.item_name);
+  addField("Tipo", isService ? (item.item_service_type === "inverter" ? "Inverter" : "Convencional") : (item.item_product_condition || "Produto"));
+  addField("Categoria", item.item_product_category);
+  addField("Quantidade", item.item_quantity);
   const valor = item.item_price
     ? `R$ ${Number(item.item_price * item.item_quantity).toFixed(2).replace(".", ",")}`
     : "Preço a definir";
-  doc.text(`Valor: ${valor}`, margin + 4, y);
-  y += 5;
-
-  const pgto = isService
-    ? (item.item_payment_status || "Pendente")
-    : "Pago na compra";
-  doc.text(`Pagamento: ${pgto}`, margin + 4, y);
+  addField("Valor", valor);
+  addField("Pagamento", isService ? (item.item_payment_status || "Pendente") : "Pago na compra");
 
   if (isService) {
-    y += 5;
-    doc.text(`Problema: ${item.item_problem_description || "Não informado"}`, margin + 4, y);
+    addField("Defeito informado pelo cliente", item.item_problem_description || "Não informado");
+    addField("Data/hora solicitada", item.item_scheduled_date ? new Date(item.item_scheduled_date).toLocaleString("pt-BR") : "-");
+    y += 8;
   }
 
-  y += 10;
-
-  // --- DIAGNÓSTICO (se serviço) ---
+  // ─── DIAGNÓSTICO ───
+  const diagSectionNum = secCount;
   if (isService && item.item_diagnosis) {
-    if (y > pageH - 50) {
-      doc.addPage();
-      y = margin;
-    }
-
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text("DIAGNÓSTICO", margin, y);
-    y += 6;
-
-    doc.setFillColor(240, 248, 255);
-    doc.roundedRect(margin, y, pageW - margin * 2, 20, 2, 2, "F");
-    doc.setDrawColor(100, 150, 220);
-    doc.setLineWidth(0.3);
-    doc.roundedRect(margin, y, pageW - margin * 2, 20, 2, 2, "S");
-
-    doc.setTextColor(dark[0], dark[1], dark[2]);
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text(item.item_diagnosis, margin + 4, y + 7, { maxWidth: pageW - margin * 2 - 8 });
-
-    y += 26;
-  }
-
-  // --- CERTIFICADO DE GARANTIA (se serviço concluído) ---
-  if (isService && item.item_completed_at && item.item_warranty_expires_at) {
-    if (y > pageH - 40) {
-      doc.addPage();
-      y = margin;
-    }
-
-    doc.setFillColor(240, 248, 240);
-    doc.roundedRect(margin, y, pageW - margin * 2, 22, 3, 3, "F");
-    doc.setDrawColor(68, 221, 136);
-    doc.setLineWidth(0.5);
-    doc.roundedRect(margin, y, pageW - margin * 2, 22, 3, 3, "S");
-
-    doc.setTextColor(34, 139, 34);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.text("CERTIFICADO DE GARANTIA — 90 DIAS", margin + 4, y + 7);
+    addSectionTitle("DIAGNÓSTICO TÉCNICO");
+    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    doc.text(
-      `Concluído em: ${new Date(item.item_completed_at).toLocaleDateString("pt-BR")} | ` +
-      `Garantia até: ${new Date(item.item_warranty_expires_at).toLocaleDateString("pt-BR")}`,
-      margin + 4,
-      y + 13
-    );
-    doc.text(
-      "Cobertura: mesmo defeito reparado, peças substituídas e mão de obra.",
-      margin + 4,
-      y + 18
-    );
-
-    y += 28;
+    const diagLines = doc.splitTextToSize(item.item_diagnosis, pageW - margin * 2);
+    doc.text(diagLines, margin, y);
+    y += diagLines.length * 4 + 2;
+    y += 8;
   }
 
-  // --- ASSINATURAS ---
-  if (y > pageH - 35) {
-    doc.addPage();
-    y = margin;
-  }
+  // ─── ORÇAMENTO ───
+  addSectionTitle("ORÇAMENTO");
+  const tableY = y;
+  const tableData = [[
+    item.item_name,
+    isService ? (item.item_service_type === "inverter" ? "Inverter" : "Convencional") : (item.item_product_condition || "Produto"),
+    String(item.item_quantity),
+    item.item_price ? `R$ ${Number(item.item_price * item.item_quantity).toFixed(2).replace(".", ",")}` : "-",
+    isService ? (item.item_payment_status || "Pendente") : "Pago na compra",
+  ]];
 
-  doc.setTextColor(dark[0], dark[1], dark[2]);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("ASSINATURAS", margin, y);
+  autoTable(doc, {
+    startY: tableY,
+    head: [["Item", "Tipo", "Qtd", "Valor", "Pagamento"]],
+    body: tableData,
+    theme: "grid",
+    headStyles: {
+      fillColor: COLORS.primary,
+      textColor: COLORS.light,
+      fontSize: 7,
+      fontStyle: "bold",
+      cellPadding: 2,
+    },
+    styles: {
+      fontSize: 7,
+      cellPadding: 2,
+      valign: "middle" as const,
+      textColor: COLORS.dark,
+    },
+    margin: { left: margin, right: margin },
+  });
+
+  // @ts-ignore
+  y = doc.lastAutoTable?.finalY || tableY + 20;
   y += 8;
 
-  const sigW = (pageW - margin * 2 - 10) / 2;
-
-  doc.setDrawColor(150, 150, 150);
-  doc.line(margin, y + 15, margin + sigW, y + 15);
-  doc.setFontSize(8);
+  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  doc.setFontSize(7);
   doc.setFont("helvetica", "normal");
-  doc.text("Técnico Responsável", margin, y + 20);
-  doc.text("A.R Conserto", margin, y + 24);
+  doc.text(`Subtotal: R$ ${Number(order.order_total).toFixed(2).replace(".", ",")}`, pageW - margin - 55, y);
+  y += 8;
+  doc.text(`TOTAL: R$ ${Number(order.order_total).toFixed(2).replace(".", ",")}`, pageW - margin - 55, y);
+  y += 8;
 
-  doc.line(margin + sigW + 10, y + 15, margin + sigW * 2 + 10, y + 15);
-  doc.text("Cliente", margin + sigW + 10, y + 20);
-  doc.text(clienteName, margin + sigW + 10, y + 24);
+  // ─── AUTORIZAÇÃO ───
+  addSectionTitle("AUTORIZAÇÃO DO CLIENTE");
+  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  doc.setFontSize(7.5);
+  doc.setFont("helvetica", "normal");
+  const authText = "Declaro que tive acesso ao orçamento e autorizo a execução do serviço conforme registrado nesta Ordem de Serviço. Estou ciente de que o prazo de garantia começa a contar a partir da data de conclusão do serviço.";
+  const authLines = doc.splitTextToSize(authText, pageW - margin * 2);
+  doc.text(authLines, margin, y);
+  y += authLines.length * 4 + 3;
 
-  y += 32;
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "italic");
+  doc.setTextColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
+  doc.text("Nome: ________________________________  CPF: ________________________________", margin, y);
+  y += 5;
+  doc.text("Assinatura: _________________________  Data: ___/___/_______  Hora: ___:___", margin, y);
+  y += 8;
 
-  // --- CANHOTO ---
-  if (y > pageH - 30) {
-    doc.addPage();
-    y = margin;
+  // ─── SERVIÇO REALIZADO ───
+  if (item.status === "concluido" || item.status === "pronta" || item.status === "entregue" || order.order_status === "concluido") {
+    addSectionTitle("SERVIÇO REALIZADO");
+    addField("Descrição do serviço", item.item_diagnosis || "Serviço realizado conforme diagnóstico");
+    if (item.item_completed_at) {
+      addField("Data conclusão", new Date(item.item_completed_at).toLocaleDateString("pt-BR"));
+    }
+    addField("Técnico", "A.R Conserto");
+    y += 8;
+  }
+  if (y > pageH - 60) { doc.addPage(); addHeader(); y = 42; }
+  // ─── TESTE FINAL (só serviços) ───
+  if (isService) {
+    if (y > pageH - 60) { doc.addPage(); addHeader(); y = 35; }
+    addSectionTitle("TESTE FINAL");
+    doc.setFontSize(7);
+    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+    const singleTests = [
+      { label: "Equipamento ligado após reparo", key: "teste_equipamento_ligado" },
+      { label: "Função principal testada", key: "teste_funcao_principal" },
+      { label: "Funções secundárias testadas", key: "teste_funcoes_secundarias" },
+      { label: "Peças substituídas testadas", key: "teste_pecas_substituidas" },
+      { label: "Equipamento funcionando normalmente", key: "teste_funcionando_normalmente" },
+    ];
+    singleTests.forEach(t => {
+      const checked = (item as PDFOrderItem)[t.key as keyof PDFOrderItem] === true;
+      doc.text(`[${checked ? "X" : " "}] ${t.label}`, margin, y);
+      y += 5;
+    });
+    y += 8;
   }
 
-  doc.setDrawColor(red[0], red[1], red[2]);
+  // ─── GARANTIA ───
+  addSectionTitle("CONDIÇÕES DE GARANTIA");
+
+  // Garantia visual
+  doc.setFillColor(245, 255, 245);
+  doc.setDrawColor(COLORS.success[0], COLORS.success[1], COLORS.success[2]);
+  doc.setLineWidth(0.5);
+  doc.roundedRect(margin, y, pageW - margin * 2, 30, 3, 3, "FD");
+  y += 5;
+
+  doc.setTextColor(COLORS.success[0], COLORS.success[1], COLORS.success[2]);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.text("CERTIFICADO DE GARANTIA", margin + 4, y);
+  y += 5;
+
+  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "normal");
+  doc.text("Prazo: 90 (noventa) dias a partir da data de conclusão do serviço.", margin + 4, y);
+  y += 8;
+  doc.text("Cobertura: mesmo defeito reparado, peças substituídas e mão de obra.", margin + 4, y);
+  y += 8;
+  doc.text("Para acionar: apresente este documento ou informe o número da O.S.", margin + 4, y);
+  y += 12;
+
+  // Texto legal completo
+  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "normal");
+  const legalText = "A A.R. Consertos observará a garantia legal aplicável aos serviços realizados, respeitando os direitos assegurados pelo Código de Defesa do Consumidor. Para serviços e produtos duráveis, será observado o prazo de 90 (noventa) dias previsto no art. 26, II, do Código de Defesa do Consumidor para reclamação de vícios aparentes ou de fácil constatação [Lei nº 8.078/1990]. Danos decorrentes de queda, impacto, mau uso, instalação inadequada, ligação elétrica inadequada, sobretensão, líquidos, umidade, oxidação, corrosão, intervenção ou reparo realizado por terceiros, ou outras causas externas, serão submetidos à avaliação técnica, sem prejuízo dos direitos assegurados pela legislação. Nenhum serviço adicional sujeito a cobrança será realizado sem prévia ciência e autorização do cliente. Esta condição de garantia não representa renúncia, exclusão ou limitação dos direitos assegurados ao consumidor pela legislação vigente.";
+  const legalLines = doc.splitTextToSize(legalText, pageW - margin * 2);
+
+  // Add more space between certificate box and legal text
+  y += 8;
+
+  // Add a subtle separator line
+  doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
+  doc.setLineWidth(0.2);
+  doc.line(margin, y, pageW - margin, y);
+  y += 8;
+
+  doc.text(legalLines, margin, y);
+  y += legalLines.length * 3.5 + 8;
+
+  // ─── ENTREGA (só serviços) ───
+  if (isService) {
+    if (y > pageH - 80) { doc.addPage(); addHeader(); y = 35; }
+    addSectionTitle("ENTREGA DO EQUIPAMENTO");
+    doc.setFontSize(7);
+    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+    const singleEntrega = [
+      { label: "Equipamento entregue", key: "entrega_equipamento_entregue" },
+      { label: "Acessórios conferidos", key: "entrega_acessorios_conferidos" },
+      { label: "Equipamento testado", key: "entrega_equipamento_testado" },
+      { label: "Pagamento registrado", key: "entrega_pagamento_registrado" },
+      { label: "Ordem de Serviço enviada ao cliente", key: "entrega_os_enviada" },
+      { label: "Condições de garantia disponibilizadas", key: "entrega_garantia_disponibilizada" },
+    ];
+    singleEntrega.forEach(ent => {
+      const checked = (item as PDFOrderItem)[ent.key as keyof PDFOrderItem] === true;
+      doc.text(`[${checked ? "X" : " "}] ${ent.label}`, margin, y);
+      y += 5;
+    });
+    y += 8;
+    doc.text(`Data de entrega: ${item.entrega_data || "___/___/_______"}  Hora: ${item.entrega_hora || "___:___"}`, margin, y);
+    y += 8;
+  }
+
+  // ─── ASSINATURAS ───
+  addSectionTitle("ASSINATURAS");
+  const sigW = (pageW - margin * 2 - 10) / 2;
+
+  doc.setLineDashPattern([0], 0);
+  doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
+  doc.setLineWidth(0.3);
+  doc.line(margin, y + 12, margin + sigW, y + 12);
+  doc.setFontSize(7);
+  doc.setTextColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
+  doc.text("Técnico Responsável", margin, y + 16);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(accent[0], accent[1], accent[2]);
+  doc.text("A.R Consertos", margin, y + 20);
+
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
+  doc.line(margin + sigW + 10, y + 12, margin + sigW * 2 + 10, y + 12);
+  doc.text("Cliente", margin + sigW + 10, y + 16);
+  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  doc.text(cliente.nome, margin + sigW + 10, y + 20);
+
+  y += 28;
+
+  // ─── CANHOTO ───
+  if (y > pageH - 25) { doc.addPage(); addHeader(); y = margin + 10; }
+
+  doc.setDrawColor(accent[0], accent[1], accent[2]);
   doc.setLineWidth(0.5);
   doc.setLineDashPattern([3, 3], 0);
   doc.line(margin, y, pageW - margin, y);
   doc.setLineDashPattern([], 0);
 
-  y += 4;
   doc.setFillColor(255, 245, 245);
-  doc.rect(margin, y, pageW - margin * 2, 18, "F");
-  doc.setDrawColor(red[0], red[1], red[2]);
-  doc.rect(margin, y, pageW - margin * 2, 18, "S");
+  doc.setDrawColor(accent[0], accent[1], accent[2]);
+  doc.setLineWidth(0.5);
+  doc.rect(margin, y + 3, pageW - margin * 2, 18, "FD");
 
-  doc.setTextColor(red[0], red[1], red[2]);
-  doc.setFontSize(10);
+  doc.setTextColor(accent[0], accent[1], accent[2]);
+  doc.setFontSize(7);
   doc.setFont("helvetica", "bold");
-  doc.text("CANHOTO — RECORTAR", margin + 4, y + 6);
-  doc.setFontSize(8);
+  doc.text("CANHOTO - RECORTAR", margin + 4, y + 8);
   doc.setFont("helvetica", "normal");
-  doc.text(`O.S.: ${order.order_id.slice(0, 8).toUpperCase()} | Item: ${item.item_name}`, margin + 4, y + 12);
-  doc.text(`Cliente: ${clienteName}`, margin + 4, y + 16);
+  doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  doc.setFontSize(6);
+  doc.text(`O.S.: ${order.order_id.slice(0, 8).toUpperCase()} | Item: ${item.item_name}`, margin + 4, y + 13);
+  doc.text(`Cliente: ${cliente.nome}`, margin + 4, y + 17);
+  doc.text(`Data: ${new Date().toLocaleDateString("pt-BR")}`, pageW - margin - 4, y + 13, { align: "right" });
+  doc.text(`Total: R$ ${Number(order.order_total).toFixed(2).replace(".", ",")}`, pageW - margin - 4, y + 17, { align: "right" });
 
   const itemSufix = isService
     ? (item.item_service_type === "inverter" ? "INV" : "CONV")
