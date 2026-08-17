@@ -49,6 +49,8 @@ interface Order {
   order_payment_method: string | null;
   order_total: number;
   order_created_at: string;
+  order_notes: string | null;
+  order_updated_at: string | null;
   items: OrderItem[];
 }
 
@@ -94,7 +96,7 @@ export default function HistoricoPage() {
     if (rpcError || !rpcData) {
       console.warn("RPC failed, falling back to direct query:", rpcError);
       
-      // First try by user_id
+      // Direct query by user_id only (simplified - removed complex cliente_id fallback)
       let { data: ordersData, error: ordersError } = await supabase
         .from("orders")
         .select(`
@@ -126,61 +128,6 @@ export default function HistoricoPage() {
         .eq("user_id", user!.id)
         .order("created_at", { ascending: false });
 
-      // If no orders found by user_id, try by cliente_id
-      if (!ordersError && (!ordersData || ordersData.length === 0)) {
-        // Find client record for this user
-        const { data: clienteData } = await supabase
-          .from("clientes")
-          .select("id")
-          .eq("user_id", user!.id)
-          .maybeSingle();
-
-        if (clienteData) {
-          const { data: clienteOrders, error: clienteError } = await supabase
-            .from("orders")
-            .select(`
-              id,
-              status,
-              payment_method,
-              total,
-              created_at,
-              order_items (
-                id,
-                item_type,
-                item_name,
-                service_type,
-                quantity,
-                price,
-                status,
-                payment_status,
-                amount_paid,
-                scheduled_date,
-                problem_description,
-                diagnosis,
-                completed_at,
-                warranty_expires_at,
-                product_category,
-                product_condition,
-                product_images
-              )
-            `)
-            .eq("cliente_id", clienteData.id)
-            .order("created_at", { ascending: false });
-
-          if (!clienteError && clienteOrders) {
-            // Also update these orders with user_id for future queries
-            for (const order of clienteOrders) {
-              await supabase
-                .from("orders")
-                .update({ user_id: user!.id })
-                .eq("id", order.id)
-                .is("user_id", null);
-            }
-            ordersData = clienteOrders;
-          }
-        }
-      }
-
       if (ordersError || !ordersData) {
         setLoading(false);
         return;
@@ -196,6 +143,8 @@ export default function HistoricoPage() {
           order_payment_method: order.payment_method,
           order_total: Number(order.total),
           order_created_at: order.created_at,
+          order_notes: order.notes || null,
+          order_updated_at: order.updated_at || null,
           items: (order.order_items || []).map((oi: any) => ({
             item_id: oi.id,
             item_type: oi.item_type,
@@ -233,6 +182,8 @@ export default function HistoricoPage() {
           order_payment_method: row.order_payment_method,
           order_total: Number(row.order_total),
           order_created_at: row.order_created_at,
+          order_notes: row.order_notes || null,
+          order_updated_at: row.order_updated_at || null,
           items: [],
         };
       }
@@ -277,8 +228,8 @@ export default function HistoricoPage() {
       order_payment_method: order.order_payment_method,
       order_total: order.order_total,
       order_created_at: order.order_created_at,
-      order_notes: null,
-      order_updated_at: null,
+      order_notes: order.order_notes,
+      order_updated_at: order.order_updated_at,
       items: order.items.map(item => ({
         ...item,
         item_type: item.item_type as "servico" | "produto",
@@ -312,8 +263,8 @@ export default function HistoricoPage() {
       order_payment_method: order.order_payment_method,
       order_total: order.order_total,
       order_created_at: order.order_created_at,
-      order_notes: null,
-      order_updated_at: null,
+      order_notes: order.order_notes,
+      order_updated_at: order.order_updated_at,
       items: [],
     };
     const pdfItem = {
@@ -582,7 +533,9 @@ export default function HistoricoPage() {
             const totalPaid = order.items.reduce((sum, i) => sum + (i.item_amount_paid || 0), 0);
             const totalPending = order.order_total - totalPaid;
             const sc = statusColors[order.order_status] || "#888";
-            const allItemsCompleted = order.items.every(i => i.item_type === "produto" || i.item_completed_at);
+            const allItemsCompleted = order.items.every(
+      (i) => i.item_type === "produto" || !!i.item_completed_at
+    );
             const anyItemCompleted = order.items.some(i => i.item_completed_at);
 
             return (

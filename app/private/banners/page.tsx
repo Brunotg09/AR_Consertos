@@ -89,7 +89,7 @@ export default function BannersPage() {
     sort_order: 0,
     accent_color: "#E30613",
     cta_label: "Saiba Mais",
-    icon_name: "" as string,
+      icon_name: "none" as string,
   });
   const [formImage, setFormImage] = useState("");
 
@@ -123,7 +123,7 @@ export default function BannersPage() {
       sort_order: 0,
       accent_color: "#E30613",
       cta_label: "Saiba Mais",
-      icon_name: "",
+      icon_name: "none",
     });
     setFormImage("");
     setSelectedBanner(null);
@@ -149,7 +149,7 @@ export default function BannersPage() {
       sort_order: banner.sort_order,
       accent_color: banner.accent_color || "#E30613",
       cta_label: banner.cta_label || "Saiba Mais",
-      icon_name: banner.icon_name || "",
+      icon_name: banner.icon_name || "none",
     });
     setFormImage(banner.image_url || "");
     setEditDialogOpen(true);
@@ -194,7 +194,7 @@ export default function BannersPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formImage && !formData.icon_name) {
+    if (!formImage && formData.icon_name === "none") {
       toast.error("Imagem ou ícone é obrigatório");
       return;
     }
@@ -210,7 +210,7 @@ export default function BannersPage() {
         sort_order: formData.sort_order,
         accent_color: formData.accent_color,
         cta_label: formData.cta_label || "Saiba Mais",
-        icon_name: formData.icon_name || null,
+        icon_name: formData.icon_name !== "none" ? formData.icon_name : null,
       };
 
        if (selectedBanner) {
@@ -489,7 +489,7 @@ export default function BannersPage() {
             {/* Image Upload */}
             <div className="space-y-3">
               <Label className="text-white/70">
-                Imagem {formData.icon_name ? "(opcional se usar ícone)" : "*"}
+                Imagem {formData.icon_name !== "none" ? "(opcional se usar ícone)" : "*"}
               </Label>
               <p className="text-[10px] text-white/40">
                 Tamanho ideal: <strong className="text-white/60">1920x800px</strong> (proporção 2.4:1) · Formato WebP ou JPG · Máx. 200KB · Conteúdo importante no centro
@@ -596,7 +596,7 @@ export default function BannersPage() {
                   <SelectValue placeholder="Nenhum (usar imagem)" />
                 </SelectTrigger>
                 <SelectContent className="h-[300px] max-h-[300px] bg-[#0f0f0f] border-white/10 text-white" sideOffset={8}>
-                  <SelectItem value="" className="pl-8">Nenhum (usar imagem)</SelectItem>
+                  <SelectItem value="none" className="pl-8">Nenhum (usar imagem)</SelectItem>
                   <SelectItem value="Wrench" className="pl-8">🔧 Wrench (Conserto)</SelectItem>
                   <SelectItem value="Cpu" className="pl-8">💻 Cpu (Eletrônica)</SelectItem>
                   <SelectItem value="Award" className="pl-8">🏆 Award (Garantia)</SelectItem>
@@ -685,7 +685,7 @@ export default function BannersPage() {
               </Button>
               <Button
                 type="submit"
-                disabled={saving || (!formImage && !formData.icon_name)}
+                disabled={saving || (!formImage && formData.icon_name === "none")}
                 className="rounded-xl bg-[#E30613] text-white hover:bg-[#E30613]/90"
               >
                 {saving ? "Salvando..." : "Salvar"}

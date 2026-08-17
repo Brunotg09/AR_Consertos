@@ -445,7 +445,7 @@ export default function PedidosPage() {
     "concluido",
   ] as const;
 
-  const FINALIZED_STATUSES = ["concluido", "cancelado", "confirmado", "pronta", "entregue"];
+  const FINALIZED_STATUSES = ["concluido", "cancelado", "pronta", "entregue"];
 
   const getItemBorderColor = (item: OrderItem) => {
     if (item.item_type === "produto") return "border-l-[#C9A84C]";

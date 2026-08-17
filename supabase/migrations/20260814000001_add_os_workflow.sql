@@ -46,7 +46,7 @@ BEGIN
   END IF;
   
   -- Block deletion of finalized orders
-  IF v_status IN ('concluido', 'cancelado', 'confirmado', 'pronta', 'entregue') THEN
+  IF v_status IN ('concluido', 'cancelado', 'pronta', 'entregue') THEN
     RETURN jsonb_build_object('success', false, 'error', 'Não é possível excluir um pedido com status: ' || v_status);
   END IF;
   
