@@ -20,6 +20,29 @@ export default function ServicosPage() {
 
   useEffect(() => { trigger("schedule"); }, [trigger]);
 
+  // Dynamic SEO metadata
+  useEffect(() => {
+    document.title = "Serviços de Conserto | A.R Conserto - Garantia 90 Dias";
+    
+    const metaDesc = "Catálogo completo de serviços de conserto de eletrodomésticos em Itabaiana/SE. Máquinas de lavar, geladeiras, micro-ondas e mais. Garantia de 90 dias.";
+    let metaTag = document.querySelector('meta[name="description"]');
+    if (!metaTag) {
+      metaTag = document.createElement("meta");
+      metaTag.setAttribute("name", "description");
+      document.head.appendChild(metaTag);
+    }
+    metaTag.setAttribute("content", metaDesc);
+
+    const canonicalUrl = "https://ar-consertos.vercel.app/servicos";
+    let canonicalTag = document.querySelector('link[rel="canonical"]');
+    if (!canonicalTag) {
+      canonicalTag = document.createElement("link");
+      canonicalTag.setAttribute("rel", "canonical");
+      document.head.appendChild(canonicalTag);
+    }
+    canonicalTag.setAttribute("href", canonicalUrl);
+  }, []);
+
   const filtrados =
     categoriaAtiva === "Todas"
       ? services

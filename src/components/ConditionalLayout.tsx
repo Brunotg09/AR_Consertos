@@ -1,11 +1,24 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import dynamic from "next/dynamic";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
-import { InstallBanner } from "@/components/InstallBanner";
-import { UpdateBanner } from "@/components/UpdateBanner";
-import { FloatingWidgetProvider } from "@/components/FloatingWidget";
+
+const InstallBanner = dynamic(
+  () => import("@/components/InstallBanner").then((mod) => mod.InstallBanner),
+  { ssr: false }
+);
+
+const UpdateBanner = dynamic(
+  () => import("@/components/UpdateBanner").then((mod) => mod.UpdateBanner),
+  { ssr: false }
+);
+
+const FloatingWidgetProvider = dynamic(
+  () => import("@/components/FloatingWidget").then((mod) => mod.FloatingWidgetProvider),
+  { ssr: false }
+);
 
 export function ConditionalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

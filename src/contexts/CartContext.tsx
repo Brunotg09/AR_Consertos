@@ -37,7 +37,7 @@ export type CartItem = CartServiceItem | CartProductItem;
 
 interface CartContextValue {
   items: CartItem[];
-  addService: (service: CartServiceItem["service"]) => void;
+  addService: (service: CartServiceItem["service"]) => boolean;
   addProduct: (product: {
     id: number;
     name: string;
@@ -94,14 +94,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(STORAGE_KEY, enc(JSON.stringify(items)));
   }, [items]);
 
-  const addService = useCallback((service: CartServiceItem["service"]) => {
+  const addService = useCallback((service: CartServiceItem["service"]): boolean => {
+    let added = false;
     setItems((prev) => {
       const exists = prev.find(
         (i) => i.type === "service" && i.service.id === service.id
       );
       if (exists) return prev;
+      added = true;
       return [...prev, { id: `svc-${service.id}`, type: "service", service }];
     });
+    return added;
   }, []);
 
   const addProduct = useCallback((product: {

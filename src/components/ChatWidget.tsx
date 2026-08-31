@@ -27,7 +27,14 @@ const QUICK_FAQS = [
 const HUMAN_KEYWORDS = [
   "falar com humano", "falar com atendente", "atendente humano",
   "quero um humano", "pessoa real", "suporte humano", "atendimento humano",
-  "humano", "atendente", "pessoa"
+  "humano", "atendente", "pessoa",
+  "suporte urgente", "ajuda urgente", "atendimento urgente", "suporte rapido",
+  "preciso de ajuda", "preciso de suporte", "preciso de atendimento",
+  "atenção urgente", "urgente", "com urgencia", "rapido",
+  "falar com alguem", "falar com someone", "quero atendimento",
+  "nao quero bot", "nao quero robô", "quero falar com uma pessoa",
+  "suporte tecnico", "assistencia tecnica", "abrir chamado",
+  "quero ajuda", "me ajude", "me da suporte"
 ];
 
 const FAQ_RESPONSES = [

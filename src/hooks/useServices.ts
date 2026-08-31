@@ -45,6 +45,7 @@ export function useServices(options?: { activeOnly?: boolean; type?: string }) {
       const { data, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
+
       if (mountedRef.current) {
         setServices(data || []);
         setError(null);
@@ -80,14 +81,15 @@ export function useServices(options?: { activeOnly?: boolean; type?: string }) {
     }
   };
 
-  function generateServiceId(name: string): string {
+  function generateServiceId(name: string, id?: number): string {
     const slug = (name || "service")
       .toLowerCase()
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
-    return `svc-${slug}-${Date.now()}`;
+    const suffix = id ? `-${id}` : `-${Date.now()}`;
+    return `${slug}${suffix}`;
   }
 
   const updateService = async (id: number, updates: Partial<ServiceItem>) => {

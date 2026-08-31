@@ -181,9 +181,11 @@ export default function ServicosAdminPage() {
         name: editForm.name,
         description: editForm.description,
         category: editForm.category,
+        type: editForm.type,
         price: editForm.price ? parseFloat(editForm.price) : null,
         discount_percentage: parseInt(editForm.discount_percentage) || 0,
         badge_garantia: editForm.badge_garantia,
+        icon_name: editForm.icon_name,
         images: images,
       });
 

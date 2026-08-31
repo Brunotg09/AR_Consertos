@@ -3,12 +3,36 @@
 import { ServiceCard } from "@/components/ServiceCard";
 import { useServices } from "@/hooks/useServices";
 import { Cpu, Loader2, Microscope, Zap } from "lucide-react";
+import { useEffect } from "react";
 
 export default function InverterPage() {
   const { services, loading } = useServices({
     activeOnly: true,
     type: "inverter",
   });
+
+  // Dynamic SEO metadata
+  useEffect(() => {
+    document.title = "Eletrônica Inverter | A.R Conserto - Reparo Avançado";
+    
+    const metaDesc = "Reparo avançado em eletrônica inverter: ar-condicionado, inversores solares, fontes chaveadas. Laboratório equipado em Itabaiana/SE. Garantia 90 dias.";
+    let metaTag = document.querySelector('meta[name="description"]');
+    if (!metaTag) {
+      metaTag = document.createElement("meta");
+      metaTag.setAttribute("name", "description");
+      document.head.appendChild(metaTag);
+    }
+    metaTag.setAttribute("content", metaDesc);
+
+    const canonicalUrl = "https://ar-consertos.vercel.app/inverter";
+    let canonicalTag = document.querySelector('link[rel="canonical"]');
+    if (!canonicalTag) {
+      canonicalTag = document.createElement("link");
+      canonicalTag.setAttribute("rel", "canonical");
+      document.head.appendChild(canonicalTag);
+    }
+    canonicalTag.setAttribute("href", canonicalUrl);
+  }, []);
 
   if (loading) {
     return (

@@ -4,7 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { ServiceIcon } from "./ServiceIcon";
 import { useCart } from "@/contexts/CartContext";
+import { serviceUrl } from "@/lib/slugify";
 import { CalendarCheck, ArrowUpRight, ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
+import { toast } from "sonner";
 
 interface ServiceCardProps {
   service: {
@@ -46,10 +48,14 @@ export function ServiceCard({ service, variant }: ServiceCardProps) {
     setCurrentImage((p) => (p - 1 + images.length) % images.length);
   };
 
+  const serviceSlug = service.service_id || `svc-${service.id}`;
+
+  const seoUrl = serviceUrl(service.category, service.name, service.description, service.service_id);
+
   const handleSchedule = (e: React.MouseEvent) => {
     e.stopPropagation();
-    addService({
-      id: service.service_id,
+    const added = addService({
+      id: serviceSlug,
       name: service.name,
       description: service.description,
       category: service.category,
@@ -60,6 +66,11 @@ export function ServiceCard({ service, variant }: ServiceCardProps) {
       iconName: service.icon_name,
       discountPercentage: service.discount_percentage,
     });
+    if (added) {
+      toast.success(`${service.name} adicionado ao orçamento!`);
+    } else {
+      toast.info(`${service.name} já está no orçamento.`);
+    }
   };
 
   return (
@@ -202,7 +213,7 @@ export function ServiceCard({ service, variant }: ServiceCardProps) {
 
         <div className="mt-5 flex items-center gap-3">
           <Link
-            href={`/servico/${service.service_id}`}
+            href={seoUrl}
             className="flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold text-white transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02]"
             style={{
               background: `linear-gradient(135deg, ${accent} 0%, ${accent}dd 100%)`,

@@ -4,6 +4,7 @@ import { ServiceIcon } from "@/components/ServiceIcon";
 import { useCart } from "@/contexts/CartContext";
 import { supabase, withTimeout } from "@/lib/supabase";
 import { useFloatingWidget } from "@/components/FloatingWidget";
+import { categoryDisplayNames, toSlug } from "@/lib/slugify";
 import {
   ArrowLeft,
   Award,
@@ -19,7 +20,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { usePathname } from "next/navigation";
+import { toast } from "sonner";
 
 interface ServiceData {
   id: number;
@@ -44,7 +47,9 @@ const serviceTypeLabels: Record<string, string> = {
 export default function ServicoDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const id = params?.id as string;
+  const pathname = usePathname();
+  const slug = params?.slug as string[];
+  const slugKey = useMemo(() => slug?.join("/") ?? "", [slug]);
   const { addService } = useCart();
   const { trigger } = useFloatingWidget();
   const [service, setService] = useState<ServiceData | null>(null);
@@ -57,20 +62,109 @@ export default function ServicoDetailPage() {
   }, [trigger]);
 
   const fetchService = useCallback(async () => {
-    if (!id) return;
+    if (!slug || slug.length === 0) return;
     setLoading(true);
+
     try {
-      const { data, error } = await withTimeout(
-        () =>
-          supabase
-            .from("services")
-            .select("*")
-            .eq("service_id", id)
-            .eq("active", true)
-            .single(),
-        8000,
-        { data: null, error: { message: "Timeout" } }
-      );
+      let data = null;
+      let error = null;
+
+      if (slug.length >= 2) {
+        // Format: /servico/{category}/{service_id}
+        const serviceId = slug[slug.length - 1];
+
+        // Direct lookup by service_id (single query, no fetch-all)
+        const result = await withTimeout(
+          () =>
+            supabase
+              .from("services")
+              .select("*")
+              .eq("service_id", serviceId)
+              .eq("active", true)
+              .single(),
+          8000,
+          { data: null, error: { message: "Timeout" } }
+        );
+        data = result.data;
+        error = result.error;
+
+        // Fallback: try matching category + name slug (backward compat for old URLs)
+        if (error) {
+          const categorySlug = slug[0];
+          const nameSlug = slug.slice(1).join("/");
+
+          const { data: allServices } = await withTimeout(
+            () =>
+              supabase
+                .from("services")
+                .select("*")
+                .eq("active", true),
+            8000,
+            { data: [], error: { message: "Timeout" } }
+          );
+
+          if (allServices) {
+            const matched = allServices.find((s: ServiceData) => {
+              const catSlug = s.category
+                .toLowerCase()
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/^-+|-+$/g, "");
+              const nameSlugified = s.name
+                .toLowerCase()
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/^-+|-+$/g, "");
+              return catSlug === categorySlug && (nameSlugified === nameSlug || nameSlug.startsWith(nameSlugified + "-"));
+            });
+
+            if (matched) {
+              data = matched;
+              error = null;
+            }
+          }
+        }
+      } else if (slug.length === 1) {
+        // Legacy: /servico/{id} or /servico/{service_id}
+        const id = slug[0];
+
+        // Try numeric ID first
+        const numericId = parseInt(id, 10);
+        if (!isNaN(numericId) && numericId > 0) {
+          const result = await withTimeout(
+            () =>
+              supabase
+                .from("services")
+                .select("*")
+                .eq("id", numericId)
+                .eq("active", true)
+                .single(),
+            8000,
+            { data: null, error: { message: "Timeout" } }
+          );
+          data = result.data;
+          error = result.error;
+        }
+
+        // Fallback: try by service_id
+        if (error) {
+          const result = await withTimeout(
+            () =>
+              supabase
+                .from("services")
+                .select("*")
+                .eq("service_id", id)
+                .eq("active", true)
+                .single(),
+            8000,
+            { data: null, error: { message: "Timeout" } }
+          );
+          data = result.data;
+          error = result.error;
+        }
+      }
 
       if (error) {
         console.error("[servico] fetchService error:", error);
@@ -85,16 +179,69 @@ export default function ServicoDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [slugKey]);
 
   useEffect(() => {
     fetchService();
   }, [fetchService]);
 
+  // Dynamic SEO metadata
+  useEffect(() => {
+    if (service) {
+      const siteName = "A.R Conserto";
+      const title = `${service.name} | ${siteName} - Conserto com Garantia`;
+      document.title = title;
+
+      const metaDesc = service.description
+        ? `${service.name}: ${service.description} Garantia de 90 dias. Agende agora!`
+        : `${service.name} - Conserto especializado com garantia de 90 dias em Itabaiana/SE. ${siteName}`;
+      
+      let metaTag = document.querySelector('meta[name="description"]');
+      if (!metaTag) {
+        metaTag = document.createElement("meta");
+        metaTag.setAttribute("name", "description");
+        document.head.appendChild(metaTag);
+      }
+      metaTag.setAttribute("content", metaDesc.substring(0, 160));
+
+      // Open Graph
+      const ogTitle = document.querySelector('meta[property="og:title"]');
+      if (ogTitle) ogTitle.setAttribute("content", title);
+      
+      const ogDesc = document.querySelector('meta[property="og:description"]');
+      if (ogDesc) ogDesc.setAttribute("content", metaDesc.substring(0, 160));
+
+      const ogImage = service.images?.[0];
+      const ogImageTag = document.querySelector('meta[property="og:image"]');
+      if (ogImage && ogImageTag) ogImageTag.setAttribute("content", ogImage);
+
+      const seoSlug = service.service_id || service.name
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      const catSlug = service.category
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      const canonicalUrl = `https://ar-consertos.vercel.app/servico/${catSlug}/${seoSlug}`;
+      let canonicalTag = document.querySelector('link[rel="canonical"]');
+      if (!canonicalTag) {
+        canonicalTag = document.createElement("link");
+        canonicalTag.setAttribute("rel", "canonical");
+        document.head.appendChild(canonicalTag);
+      }
+      canonicalTag.setAttribute("href", canonicalUrl);
+    }
+  }, [service]);
+
   const handleSchedule = () => {
     if (!service) return;
-    addService({
-      id: service.service_id,
+    const added = addService({
+      id: service.service_id || `svc-${service.id}`,
       name: service.name,
       description: service.description,
       category: service.category,
@@ -105,6 +252,11 @@ export default function ServicoDetailPage() {
       iconName: service.icon_name,
       discountPercentage: service.discount_percentage,
     });
+    if (added) {
+      toast.success(`${service.name} adicionado ao orçamento!`);
+    } else {
+      toast.info(`${service.name} já está no orçamento.`);
+    }
   };
 
   if (loading) {
@@ -159,8 +311,56 @@ export default function ServicoDetailPage() {
       })
     : null;
 
+  // Generate breadcrumb URLs
+  const catSlug = service.category
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const catDisplayName = categoryDisplayNames[catSlug] || service.category;
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      {/* JSON-LD Structured Data for SEO */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Service",
+            name: service.name,
+            description: service.description || `${service.name} - Conserto especializado`,
+            category: service.category,
+            provider: {
+              "@type": "LocalBusiness",
+              name: "A.R Conserto",
+              address: {
+                "@type": "PostalAddress",
+                addressLocality: "Itabaiana",
+                addressRegion: "SE",
+                addressCountry: "BR",
+              },
+              telephone: "+55-79-99999-9999",
+            },
+            areaServed: {
+              "@type": "City",
+              name: "Itabaiana",
+            },
+            offers: finalPrice
+              ? {
+                  "@type": "Offer",
+                  price: finalPrice,
+                  priceCurrency: "BRL",
+                  availability: "https://schema.org/InStock",
+                }
+              : undefined,
+            image: service.images?.[0],
+            url: `https://ar-consertos.vercel.app/servico/${catSlug}/${service.service_id || service.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`,
+          }),
+        }}
+      />
+
       <div className="space-y-8 lg:space-y-12">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-xs" style={{ color: "#666666" }}>
@@ -169,6 +369,13 @@ export default function ServicoDetailPage() {
             className="transition-colors hover:text-white"
           >
             {serviceTypeLabels[service.type]}
+          </Link>
+          <span style={{ color: "#444444" }}>/</span>
+          <Link
+            href={`/servicos`}
+            className="transition-colors hover:text-white"
+          >
+            {catDisplayName}
           </Link>
           <span style={{ color: "#444444" }}>/</span>
           <span className="text-white">{service.name}</span>

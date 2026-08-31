@@ -1,8 +1,5 @@
 "use client";
 
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
-
 export interface PDFOrderItem {
   item_type: string;
   item_name: string;
@@ -69,12 +66,17 @@ const COLORS = {
   muted: [163, 163, 163] as [number, number, number],    // Gray text
 };
 
-export function generateOSPDF(
+export async function generateOSPDF(
   order: PDFOrder,
   cliente: PDFCliente,
   empresaInfo: { nome: string; cnpj: string; endereco: string; telefone: string; email: string; site: string }
 ) {
-  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const [{ jsPDF: JsPDF }, autoTableModule] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
+  const autoTable = autoTableModule.default;
+  const doc = new JsPDF({ unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 15;
@@ -432,13 +434,18 @@ export function generateOSPDF(
   doc.save(`OS-${order.order_id.slice(0, 8).toUpperCase()}.pdf`);
 }
 
-export function generateSingleItemOSPDF(
+export async function generateSingleItemOSPDF(
   order: PDFOrder,
   item: PDFOrderItem,
   cliente: PDFCliente,
   empresaInfo: { nome: string; cnpj: string; endereco: string; telefone: string; email: string; site: string }
 ) {
-  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const [{ jsPDF: JsPDF }, autoTableModule] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
+  const autoTable = autoTableModule.default;
+  const doc = new JsPDF({ unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 15;

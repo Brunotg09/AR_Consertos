@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   ShoppingCart,
@@ -11,27 +11,47 @@ import {
   Settings,
   TrendingUp,
   ArrowRight,
+  Calendar,
+  Activity,
+  Wrench,
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from "recharts";
+import dynamic from "next/dynamic";
 import { supabase, withTimeout } from "@/lib/supabase";
-import { format } from "date-fns";
+
+const DashboardCharts = dynamic(
+  () => import("@/components/DashboardCharts").then((mod) => mod.DashboardCharts),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="grid gap-6 lg:grid-cols-2">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-4 sm:p-6">
+            <div className="flex h-64 items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-transparent" />
+            </div>
+          </div>
+        ))}
+      </div>
+    ),
+  }
+);
+import { format, subDays, subMonths, subYears, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+type PeriodOption = "today" | "yesterday" | "week" | "month" | "quarter" | "year";
 
 interface KPIData {
   pedidosHoje: number;
   pedidosPendentes: number;
+  receitaRecebida: number;
+  receitaPendente: number;
   receitaTotal: number;
   totalClientes: number;
   receitaConvencional: number;
@@ -46,94 +66,215 @@ interface RecentOrder {
   status: string;
 }
 
-const COLORS = {
-  convencional: "#C9A84C",
-  inverter: "#8B5CF6",
-  produtos: "#E30613",
+interface DailyRevenue {
+  date: string;
+  convencional: number;
+  inverter: number;
+  produtos: number;
+  total: number;
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  pendente: "#EAB308",
+  confirmado: "#3B82F6",
+  em_andamento: "#8B5CF6",
+  concluido: "#22C55E",
+  cancelado: "#EF4444",
 };
 
 export default function AdminDashboard() {
+  const [period, setPeriod] = useState<PeriodOption>("month");
   const [loading, setLoading] = useState(true);
   const [kpiData, setKpiData] = useState<KPIData | null>(null);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
   const [chartData, setChartData] = useState<{ name: string; value: number }[]>([]);
+  const [dailyRevenue, setDailyRevenue] = useState<DailyRevenue[]>([]);
+  const [statusData, setStatusData] = useState<{ name: string; value: number; color: string }[]>([]);
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
+  const getDateRange = useCallback(() => {
+    const now = new Date();
+    let start: Date;
+    const end = endOfDay(now);
 
-  const fetchDashboardData = async () => {
+    switch (period) {
+      case "today":
+        start = startOfDay(now);
+        break;
+      case "yesterday":
+        start = startOfDay(subDays(now, 1));
+        break;
+      case "week":
+        start = startOfDay(subDays(now, 7));
+        break;
+      case "month":
+        start = startOfDay(subMonths(now, 1));
+        break;
+      case "quarter":
+        start = startOfDay(subMonths(now, 3));
+        break;
+      case "year":
+        start = startOfDay(subYears(now, 1));
+        break;
+      default:
+        start = startOfDay(subMonths(now, 1));
+        break;
+    }
+
+    return { start, end };
+  }, [period]);
+
+  const fetchDashboardData = useCallback(async () => {
+    setLoading(true);
     try {
+      const { start, end } = getDateRange();
+
+      const [ordersResult, orderItemsResult, clientsResult] = await Promise.allSettled([
+        withTimeout(() =>
+          supabase
+            .from("orders")
+            .select("id, created_at, total, status")
+            .gte("created_at", start.toISOString())
+            .lte("created_at", end.toISOString()),
+          8000,
+          { data: [], error: null }
+        ),
+        withTimeout(() =>
+          supabase.from("order_items").select("item_type, service_type, item_name, price, quantity, order_id"),
+          8000,
+          { data: [], error: null }
+        ),
+        withTimeout(() =>
+          supabase.from("clientes").select("*", { count: "exact", head: true }),
+          8000,
+          { data: null, error: null, count: 0 }
+        ),
+      ]);
+
+      const orders = ordersResult.status === "fulfilled" ? ordersResult.value.data || [] : [];
+      const orderItems = orderItemsResult.status === "fulfilled" ? orderItemsResult.value.data || [] : [];
+      const clientsCount = clientsResult.status === "fulfilled" ? clientsResult.value.count : 0;
+
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const [ordersResult, orderItemsResult, clientsResult] = await Promise.allSettled([
-        withTimeout(() => supabase.from("orders").select("id, created_at, total, status"), 8000, { data: [], error: null }),
-        withTimeout(() => supabase.from("order_items").select("item_type, service_type, price, quantity"), 8000, { data: [], error: null }),
-        withTimeout(() => supabase.from("clientes").select("*", { count: "exact", head: true }), 8000, { data: null, error: null, count: 0 }),
+      const pedidosHoje = orders.filter(
+        (o: { created_at: string }) => new Date(o.created_at) >= today
+      ).length;
+
+      const pedidosPendentes = orders.filter(
+        (o: { status: string }) => o.status === "pendente" || o.status === "confirmado" || o.status === "em_andamento"
+      ).length;
+
+      // Receita Recebida: pedidos concluídos
+      const receitaRecebida = orders
+        .filter((o: { status: string }) => o.status === "concluido")
+        .reduce((sum: number, o: { total: number }) => sum + Number(o.total || 0), 0);
+
+      // Receita Pendente: pedidos pendentes, confirmados ou em andamento
+      const receitaPendente = orders
+        .filter((o: { status: string }) => o.status === "pendente" || o.status === "confirmado" || o.status === "em_andamento")
+        .reduce((sum: number, o: { total: number }) => sum + Number(o.total || 0), 0);
+
+      // Receita Total: tudo que não foi cancelado
+      const receitaTotal = orders
+        .filter((o: { status: string }) => o.status !== "cancelado")
+        .reduce((sum: number, o: { total: number }) => sum + Number(o.total || 0), 0);
+
+      let receitaConvencional = 0;
+      let receitaInverter = 0;
+      let receitaProdutos = 0;
+      const dailyRev: Record<string, DailyRevenue> = {};
+      const statusCounts: Record<string, number> = {};
+
+      orders.forEach((order: { status: string; created_at: string }) => {
+        statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
+        const dateKey = format(new Date(order.created_at), "dd/MM");
+        if (!dailyRev[dateKey]) {
+          dailyRev[dateKey] = { date: dateKey, convencional: 0, inverter: 0, produtos: 0, total: 0 };
+        }
+      });
+
+      orderItems.forEach((item: { order_id: string; item_type: string; service_type: string | null; price: number; quantity: number }) => {
+        const order = orders.find((o: { id: string }) => o.id === item.order_id);
+        if (!order) return;
+
+        const itemTotal = Number(item.price || 0) * (item.quantity || 1);
+
+        if (item.item_type === "servico") {
+          if (item.service_type === "inverter") {
+            receitaInverter += itemTotal;
+            const dateKey = format(new Date(order.created_at), "dd/MM");
+            if (dailyRev[dateKey]) dailyRev[dateKey].inverter += itemTotal;
+          } else {
+            receitaConvencional += itemTotal;
+            const dateKey = format(new Date(order.created_at), "dd/MM");
+            if (dailyRev[dateKey]) dailyRev[dateKey].convencional += itemTotal;
+          }
+        } else if (item.item_type === "produto") {
+          receitaProdutos += itemTotal;
+          const dateKey = format(new Date(order.created_at), "dd/MM");
+          if (dailyRev[dateKey]) dailyRev[dateKey].produtos += itemTotal;
+        }
+      });
+
+      orders.forEach((order: { created_at: string; total: number }) => {
+        const dateKey = format(new Date(order.created_at), "dd/MM");
+        if (dailyRev[dateKey]) dailyRev[dateKey].total += Number(order.total || 0);
+      });
+
+      setKpiData({
+        pedidosHoje,
+        pedidosPendentes,
+        receitaRecebida,
+        receitaPendente,
+        receitaTotal,
+        totalClientes: clientsCount || 0,
+        receitaConvencional,
+        receitaInverter,
+        receitaProdutos,
+      });
+
+      setChartData([
+        { name: "Convencional", value: receitaConvencional },
+        { name: "Inverter", value: receitaInverter },
+        { name: "Produtos", value: receitaProdutos },
       ]);
 
-      const orders = ordersResult.status === "fulfilled" ? ordersResult.value.data : [];
-      const orderItems = orderItemsResult.status === "fulfilled" ? orderItemsResult.value.data : [];
-      const clientsCount = clientsResult.status === "fulfilled" ? clientsResult.value.count : 0;
+      setDailyRevenue(
+        Object.values(dailyRev).sort((a, b) => {
+          const [dA, mA] = a.date.split("/").map(Number);
+          const [dB, mB] = b.date.split("/").map(Number);
+          if (mA !== mB) return mA - mB;
+          return dA - dB;
+        })
+      );
 
-      if (orders && orderItems) {
-        const pedidosHoje = orders.filter(
-          (o) => new Date(o.created_at) >= today
-        ).length;
+      setStatusData(
+        Object.entries(statusCounts).map(([status, count]) => ({
+          name: status === "pendente" ? "Pendente" :
+                status === "confirmado" ? "Confirmado" :
+                status === "em_andamento" ? "Em Andamento" :
+                status === "concluido" ? "Concluído" :
+                status === "cancelado" ? "Cancelado" : status,
+          value: count,
+          color: STATUS_COLORS[status] || "#666",
+        }))
+      );
 
-        const pedidosPendentes = orders.filter(
-          (o) => o.status === "pendente" || o.status === "confirmado" || o.status === "em_andamento"
-        ).length;
-
-        const receitaTotal = orders
-          .filter((o) => o.status !== "cancelado")
-          .reduce((sum, o) => sum + Number(o.total || 0), 0);
-
-        let receitaConvencional = 0;
-        let receitaInverter = 0;
-        let receitaProdutos = 0;
-
-        orderItems.forEach((item) => {
-          const itemTotal = Number(item.price || 0) * (item.quantity || 1);
-          if (item.item_type === "servico") {
-            if (item.service_type === "convencional") {
-              receitaConvencional += itemTotal;
-            } else if (item.service_type === "inverter") {
-              receitaInverter += itemTotal;
-            }
-          } else if (item.item_type === "produto") {
-            receitaProdutos += itemTotal;
-          }
-        });
-
-        setKpiData({
-          pedidosHoje,
-          pedidosPendentes,
-          receitaTotal,
-          totalClientes: clientsCount || 0,
-          receitaConvencional,
-          receitaInverter,
-          receitaProdutos,
-        });
-
-        setChartData([
-          { name: "Convencional", value: receitaConvencional },
-          { name: "Inverter", value: receitaInverter },
-          { name: "Produtos", value: receitaProdutos },
-        ]);
-
-        const sorted = [...orders]
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-          .slice(0, 5);
-        setRecentOrders(sorted);
-      }
+      const sorted = [...orders]
+        .sort((a: { created_at: string }, b: { created_at: string }) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 5);
+      setRecentOrders(sorted);
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [getDateRange]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -175,15 +316,31 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="font-montserrat text-2xl font-bold text-white">Dashboard</h1>
-        <p className="mt-1 text-sm text-white/50">Visão geral do seu negócio</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="font-montserrat text-2xl font-bold text-white">Dashboard</h1>
+          <p className="mt-1 text-sm text-white/50">Visão geral do seu negócio</p>
+        </div>
+        <Select value={period} onValueChange={(value) => setPeriod(value as PeriodOption)}>
+          <SelectTrigger className="w-44 rounded-xl border-white/10 bg-white/[0.02] text-white">
+            <Calendar className="mr-2 h-4 w-4" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="bg-[#1a1a1a] border-white/10">
+            <SelectItem value="today" className="text-white">Hoje</SelectItem>
+            <SelectItem value="yesterday" className="text-white">Ontem</SelectItem>
+            <SelectItem value="week" className="text-white">Últimos 7 Dias</SelectItem>
+            <SelectItem value="month" className="text-white">Último Mês</SelectItem>
+            <SelectItem value="quarter" className="text-white">Último Trimestre</SelectItem>
+            <SelectItem value="year" className="text-white">Último Ano</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
         <KPICard
-          title="Pedidos Hoje"
+          title="Pedidos no Período"
           value={kpiData?.pedidosHoje ?? 0}
           icon={ShoppingCart}
           color="#E30613"
@@ -195,115 +352,33 @@ export default function AdminDashboard() {
           color="#C9A84C"
         />
         <KPICard
-          title="Receita Total"
-          value={formatCurrency(kpiData?.receitaTotal ?? 0)}
+          title="Receita Recebida"
+          value={formatCurrency(kpiData?.receitaRecebida ?? 0)}
           icon={DollarSign}
           color="#22C55E"
         />
         <KPICard
-          title="Total de Clientes"
-          value={kpiData?.totalClientes ?? 0}
-          icon={Users}
+          title="Receita Pendente"
+          value={formatCurrency(kpiData?.receitaPendente ?? 0)}
+          icon={Activity}
+          color="#EAB308"
+        />
+        <KPICard
+          title="Receita Total"
+          value={formatCurrency(kpiData?.receitaTotal ?? 0)}
+          icon={TrendingUp}
           color="#8B5CF6"
         />
       </div>
 
-      {/* Charts Row */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Revenue by Segment - Pie Chart */}
-        <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-4 sm:p-6">
-          <div className="mb-4 flex items-center justify-between sm:mb-6">
-            <div>
-              <h2 className="font-montserrat text-base font-bold text-white sm:text-lg">
-                Faturamento por Segmento
-              </h2>
-              <p className="text-xs text-white/50 sm:text-sm">Distribuição da receita</p>
-            </div>
-            <TrendingUp className="h-4 w-4 text-green-500 sm:h-5 sm:w-5" />
-          </div>
-
-          <ResponsiveContainer width="100%" height={240}>
-            <PieChart>
-              <Pie
-                data={chartData}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={100}
-                paddingAngle={4}
-                dataKey="value"
-              >
-                <Cell fill={COLORS.convencional} />
-                <Cell fill={COLORS.inverter} />
-                <Cell fill={COLORS.produtos} />
-              </Pie>
-              <Tooltip
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                formatter={(value: any) => formatCurrency(Number(value))}
-                contentStyle={{
-                  backgroundColor: "#1a1a1a",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: "8px",
-                }}
-              />
-              <Legend
-                formatter={(value) => <span className="text-white/70">{value}</span>}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-
-          {/* Segment Details */}
-          <div className="mt-4 grid grid-cols-3 gap-2 text-center border-t border-white/[0.06] pt-4 sm:gap-4">
-            <div>
-              <div className="mx-auto mb-1 h-2 w-2 rounded-full" style={{ backgroundColor: COLORS.convencional }} />
-              <p className="text-[10px] text-white/50 sm:text-xs">Convencional</p>
-              <p className="text-xs font-bold text-white sm:text-base">{formatCurrency(kpiData?.receitaConvencional ?? 0)}</p>
-            </div>
-            <div>
-              <div className="mx-auto mb-1 h-2 w-2 rounded-full" style={{ backgroundColor: COLORS.inverter }} />
-              <p className="text-[10px] text-white/50 sm:text-xs">Inverter</p>
-              <p className="text-xs font-bold text-white sm:text-base">{formatCurrency(kpiData?.receitaInverter ?? 0)}</p>
-            </div>
-            <div>
-              <div className="mx-auto mb-1 h-2 w-2 rounded-full" style={{ backgroundColor: COLORS.produtos }} />
-              <p className="text-[10px] text-white/50 sm:text-xs">Produtos</p>
-              <p className="text-xs font-bold text-white sm:text-base">{formatCurrency(kpiData?.receitaProdutos ?? 0)}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Revenue Bar Chart */}
-        <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-4 sm:p-6">
-          <div className="mb-4 sm:mb-6">
-            <h2 className="font-montserrat text-base font-bold text-white sm:text-lg">
-              Comparativo de Receita
-            </h2>
-            <p className="text-xs text-white/50 sm:text-sm">Faturamento por categoria</p>
-          </div>
-
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={chartData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-              <XAxis type="number" tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 12 }} />
-              <YAxis dataKey="name" type="category" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 12 }} width={80} />
-              <Tooltip
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                formatter={(value: any) => formatCurrency(Number(value))}
-                contentStyle={{
-                  backgroundColor: "#1a1a1a",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: "8px",
-                }}
-              />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                <Cell fill={COLORS.convencional} />
-                <Cell fill={COLORS.inverter} />
-                <Cell fill={COLORS.produtos} />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+      {/* Charts */}
+      <DashboardCharts
+        chartData={chartData}
+        dailyRevenue={dailyRevenue}
+        statusData={statusData}
+        kpiData={kpiData}
+        formatCurrency={formatCurrency}
+      />
 
       {/* Recent Orders */}
       <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-6">
@@ -403,15 +478,15 @@ export default function AdminDashboard() {
           </div>
         </Link>
         <Link
-          href="/"
+          href="/private/relatorios"
           className="flex items-center gap-4 rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4 transition-colors hover:bg-white/[0.02]"
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
-            <Settings className="h-5 w-5 text-green-500" />
+            <TrendingUp className="h-5 w-5 text-green-500" />
           </div>
           <div>
-            <p className="text-sm font-medium text-white">Ver Site</p>
-            <p className="text-xs text-white/50">Área pública</p>
+            <p className="text-sm font-medium text-white">Ver Relatórios</p>
+            <p className="text-xs text-white/50">Análises avançadas</p>
           </div>
         </Link>
       </div>

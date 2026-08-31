@@ -10,8 +10,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { endOfDay, format, startOfDay, subDays, subMonths, subYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
+import dynamic from "next/dynamic";
 import {
   Calendar,
   DollarSign,
@@ -19,25 +18,35 @@ import {
   FileJson,
   FileSpreadsheet,
   Package,
+  ShoppingBag,
   TrendingUp,
   Wrench,
+  Filter,
+  BarChart3,
+  PieChart as PieChartIcon,
+  Activity,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 
-type PeriodOption = "week" | "month" | "quarter" | "year" | "custom";
+const RelatoriosCharts = dynamic(
+  () => import("@/components/RelatoriosCharts").then((mod) => mod.RelatoriosCharts),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="grid gap-6 lg:grid-cols-2">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-6">
+            <div className="flex h-64 items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-transparent" />
+            </div>
+          </div>
+        ))}
+      </div>
+    ),
+  }
+);
+
+type PeriodOption = "today" | "yesterday" | "week" | "month" | "quarter" | "year" | "custom";
 
 interface RevenueData {
   date: string;
@@ -45,6 +54,31 @@ interface RevenueData {
   inverter: number;
   produtos: number;
   total: number;
+}
+
+interface OrderData {
+  id: string;
+  total: number;
+  status: string;
+  created_at: string;
+  cliente_id: number;
+}
+
+interface OrderItemData {
+  id: number;
+  order_id: string;
+  item_type: string;
+  service_type: string | null;
+  item_name: string;
+  price: number;
+  quantity: number;
+  payment_status: string;
+}
+
+interface TopService {
+  name: string;
+  count: number;
+  revenue: number;
 }
 
 interface BackupData {
@@ -57,8 +91,20 @@ interface BackupData {
   version: string;
 }
 
+const STATUS_COLORS: Record<string, string> = {
+  pendente: "#EAB308",
+  confirmado: "#3B82F6",
+  em_andamento: "#8B5CF6",
+  concluido: "#22C55E",
+  cancelado: "#EF4444",
+};
+
 export default function RelatoriosPage() {
   const [period, setPeriod] = useState<PeriodOption>("month");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [revenueData, setRevenueData] = useState<RevenueData[]>([]);
@@ -67,9 +113,15 @@ export default function RelatoriosPage() {
     inverter: 0,
     produtos: 0,
     total: 0,
+    recebida: 0,
+    pendente: 0,
   });
-  const [orders, setOrders] = useState<unknown[]>([]);
-  const [orderItems, setOrderItems] = useState<unknown[]>([]);
+  const [orders, setOrders] = useState<OrderData[]>([]);
+  const [orderItems, setOrderItems] = useState<OrderItemData[]>([]);
+  const [statusBreakdown, setStatusBreakdown] = useState<{ name: string; value: number; color: string }[]>([]);
+  const [topServices, setTopServices] = useState<TopService[]>([]);
+  const [orderCount, setOrderCount] = useState(0);
+  const [avgTicket, setAvgTicket] = useState(0);
 
   const getDateRange = useCallback(() => {
     const now = new Date();
@@ -77,6 +129,12 @@ export default function RelatoriosPage() {
     const end = endOfDay(now);
 
     switch (period) {
+      case "today":
+        start = startOfDay(now);
+        break;
+      case "yesterday":
+        start = startOfDay(subDays(now, 1));
+        break;
       case "week":
         start = startOfDay(subDays(now, 7));
         break;
@@ -89,13 +147,20 @@ export default function RelatoriosPage() {
       case "year":
         start = startOfDay(subYears(now, 1));
         break;
+      case "custom":
+        if (customStartDate && customEndDate) {
+          start = startOfDay(new Date(customStartDate));
+          return { start, end: endOfDay(new Date(customEndDate)) };
+        }
+        start = startOfDay(subMonths(now, 1));
+        break;
       default:
         start = startOfDay(subMonths(now, 1));
         break;
     }
 
     return { start, end };
-  }, [period]);
+  }, [period, customStartDate, customEndDate]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -114,8 +179,7 @@ export default function RelatoriosPage() {
         `
         )
         .gte("created_at", start.toISOString())
-        .lte("created_at", end.toISOString())
-        .neq("status", "cancelado");
+        .lte("created_at", end.toISOString());
 
       const { data: itemsData } = await supabase
         .from("order_items")
@@ -125,20 +189,35 @@ export default function RelatoriosPage() {
           order_id,
           item_type,
           service_type,
+          item_name,
           price,
           quantity,
-          payment_status,
-          created_at
+          payment_status
         `
         );
 
-      setOrders(ordersData || []);
-      setOrderItems(itemsData || []);
+      const filteredOrders = (ordersData || []).filter((o: OrderData) => {
+        if (statusFilter !== "all" && o.status !== statusFilter) return false;
+        if (statusFilter === "all" && o.status === "cancelado") return false;
+        return true;
+      });
 
-      // Calculate revenue by day
+      const filteredOrderIds = new Set(filteredOrders.map((o: OrderData) => o.id));
+      const filteredItems = (itemsData || []).filter((item: OrderItemData) => {
+        if (!filteredOrderIds.has(item.order_id)) return false;
+        if (typeFilter === "convencional" && !(item.item_type === "servico" && item.service_type === "convencional")) return false;
+        if (typeFilter === "inverter" && !(item.item_type === "servico" && item.service_type === "inverter")) return false;
+        if (typeFilter === "produtos" && item.item_type !== "produto") return false;
+        return true;
+      });
+
+      setOrders(filteredOrders);
+      setOrderItems(filteredItems);
+      setOrderCount(filteredOrders.length);
+
       const dailyRevenue: Record<string, RevenueData> = {};
 
-      (ordersData || []).forEach((order: { created_at: string; total: number }) => {
+      filteredOrders.forEach((order: OrderData) => {
         const dateKey = format(new Date(order.created_at), "dd/MM");
         if (!dailyRevenue[dateKey]) {
           dailyRevenue[dateKey] = {
@@ -152,15 +231,8 @@ export default function RelatoriosPage() {
         dailyRevenue[dateKey].total += Number(order.total) || 0;
       });
 
-      // Calculate item revenue by type
-      (itemsData || []).forEach((item: {
-        order_id: string;
-        item_type: string;
-        service_type: string | null;
-        price: number;
-        quantity: number;
-      }) => {
-        const order = ordersData?.find((o: { id: string }) => o.id === item.order_id) as { created_at: string } | undefined;
+      filteredItems.forEach((item: OrderItemData) => {
+        const order = filteredOrders.find((o: OrderData) => o.id === item.order_id);
         if (!order) return;
 
         const dateKey = format(new Date(order.created_at), "dd/MM");
@@ -179,19 +251,25 @@ export default function RelatoriosPage() {
         }
       });
 
-      setRevenueData(Object.values(dailyRevenue).reverse());
+      const sortedRevenue = Object.values(dailyRevenue).sort((a, b) => {
+        const [dA, mA] = a.date.split("/").map(Number);
+        const [dB, mB] = b.date.split("/").map(Number);
+        if (mA !== mB) return mA - mB;
+        return dA - dB;
+      });
+      setRevenueData(sortedRevenue);
 
-      // Calculate totals
       let totalConvencional = 0;
       let totalInverter = 0;
       let totalProdutos = 0;
+      const serviceCount: Record<string, { count: number; revenue: number }> = {};
+      const statusCounts: Record<string, number> = {};
 
-      (itemsData || []).forEach((item: {
-        item_type: string;
-        service_type: string | null;
-        price: number;
-        quantity: number;
-      }) => {
+      filteredOrders.forEach((order: OrderData) => {
+        statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
+      });
+
+      filteredItems.forEach((item: OrderItemData) => {
         const amount = Number(item.price || 0) * (item.quantity || 1);
         if (item.item_type === "servico") {
           if (item.service_type === "inverter") {
@@ -199,23 +277,65 @@ export default function RelatoriosPage() {
           } else {
             totalConvencional += amount;
           }
+          const key = item.item_name || "Serviço";
+          if (!serviceCount[key]) serviceCount[key] = { count: 0, revenue: 0 };
+          serviceCount[key].count += item.quantity || 1;
+          serviceCount[key].revenue += amount;
         } else {
           totalProdutos += amount;
+          const key = item.item_name || "Produto";
+          if (!serviceCount[key]) serviceCount[key] = { count: 0, revenue: 0 };
+          serviceCount[key].count += item.quantity || 1;
+          serviceCount[key].revenue += amount;
         }
       });
+
+      const grandTotal = totalConvencional + totalInverter + totalProdutos;
+      setAvgTicket(filteredOrders.length > 0 ? grandTotal / filteredOrders.length : 0);
+
+      // Receita Recebida: pedidos concluídos
+      const recebida = filteredOrders
+        .filter((o: OrderData) => o.status === "concluido")
+        .reduce((sum: number, o: OrderData) => sum + Number(o.total || 0), 0);
+
+      // Receita Pendente: pedientes, confirmados ou em andamento
+      const pendente = filteredOrders
+        .filter((o: OrderData) => o.status === "pendente" || o.status === "confirmado" || o.status === "em_andamento")
+        .reduce((sum: number, o: OrderData) => sum + Number(o.total || 0), 0);
 
       setTotals({
         convencional: totalConvencional,
         inverter: totalInverter,
         produtos: totalProdutos,
-        total: totalConvencional + totalInverter + totalProdutos,
+        total: grandTotal,
+        recebida,
+        pendente,
       });
+
+      setStatusBreakdown(
+        Object.entries(statusCounts).map(([status, count]) => ({
+          name: status === "pendente" ? "Pendente" :
+                status === "confirmado" ? "Confirmado" :
+                status === "em_andamento" ? "Em Andamento" :
+                status === "concluido" ? "Concluído" :
+                status === "cancelado" ? "Cancelado" : status,
+          value: count,
+          color: STATUS_COLORS[status] || "#666",
+        }))
+      );
+
+      setTopServices(
+        Object.entries(serviceCount)
+          .map(([name, data]) => ({ name, ...data }))
+          .sort((a, b) => b.revenue - a.revenue)
+          .slice(0, 5)
+      );
     } catch (error) {
       console.error("Error fetching data:", error);
     } finally {
       setLoading(false);
     }
-  }, [getDateRange]);
+  }, [getDateRange, statusFilter, typeFilter]);
 
   useEffect(() => {
     fetchData();
@@ -230,14 +350,24 @@ export default function RelatoriosPage() {
 
   const getPeriodLabel = () => {
     const labels: Record<PeriodOption, string> = {
-      week: "Última Semana",
+      today: "Hoje",
+      yesterday: "Ontem",
+      week: "Últimos 7 Dias",
       month: "Último Mês",
       quarter: "Último Trimestre",
       year: "Último Ano",
-      custom: "Personalizado",
+      custom: customStartDate && customEndDate
+        ? `${format(new Date(customStartDate), "dd/MM/yyyy")} - ${format(new Date(customEndDate), "dd/MM/yyyy")}`
+        : "Personalizado",
     };
     return labels[period];
   };
+
+  const chartDataForPie = [
+    { name: "Convencional", value: totals.convencional },
+    { name: "Inverter", value: totals.inverter },
+    { name: "Produtos", value: totals.produtos },
+  ];
 
   const exportJSON = async () => {
     setExporting(true);
@@ -278,11 +408,15 @@ export default function RelatoriosPage() {
     }
   };
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
+    const [{ jsPDF }, autoTableModule] = await Promise.all([
+      import("jspdf"),
+      import("jspdf-autotable"),
+    ]);
+    const autoTable = autoTableModule.default;
     const doc = new jsPDF();
     const margin = 15;
 
-    // Header
     doc.setFillColor(26, 26, 26);
     doc.rect(0, 0, doc.internal.pageSize.getWidth(), 35, "F");
 
@@ -295,7 +429,6 @@ export default function RelatoriosPage() {
     doc.text(`Período: ${getPeriodLabel()}`, margin, 22);
     doc.text(`Gerado em: ${format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR })}`, margin, 28);
 
-    // Totals
     let y = 45;
     doc.setTextColor(26, 26, 26);
     doc.setFontSize(12);
@@ -304,22 +437,27 @@ export default function RelatoriosPage() {
     y += 10;
 
     const summaryData = [
+      ["Receita Recebida", formatCurrency(totals.recebida)],
+      ["Receita Pendente", formatCurrency(totals.pendente)],
+      ["Total", formatCurrency(totals.total)],
+      ["", ""],
       ["Convencional", formatCurrency(totals.convencional)],
       ["Inverter", formatCurrency(totals.inverter)],
       ["Produtos", formatCurrency(totals.produtos)],
-      ["Total", formatCurrency(totals.total)],
+      ["", ""],
+      ["Pedidos", String(orderCount)],
+      ["Ticket Médio", formatCurrency(avgTicket)],
     ];
 
     autoTable(doc, {
       startY: y,
-      head: [["Categoria", "Faturamento"]],
+      head: [["Categoria", "Valor"]],
       body: summaryData,
       theme: "striped",
       headStyles: { fillColor: [227, 6, 19], textColor: [255, 255, 255] },
       margin: { left: margin, right: margin },
     });
 
-    // Daily breakdown
     // @ts-ignore
     y = doc.lastAutoTable?.finalY || y + 30;
     y += 10;
@@ -378,23 +516,74 @@ export default function RelatoriosPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-montserrat text-2xl font-bold text-white">Relatórios</h1>
-          <p className="mt-1 text-sm text-white/50">Análise de faturamento e backups</p>
+          <p className="mt-1 text-sm text-white/50">Análise avançada de faturamento e desempenho</p>
         </div>
+      </div>
 
-        <div className="flex gap-2">
-          <Select
-            value={period}
-            onValueChange={(value) => setPeriod(value as PeriodOption)}
-          >
-            <SelectTrigger className="w-40 rounded-xl border-white/10 bg-white/[0.02] text-white">
+      {/* Filters */}
+      <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Filter className="h-4 w-4 text-white/50" />
+          <span className="text-sm font-medium text-white/70">Filtros</span>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Select value={period} onValueChange={(value) => setPeriod(value as PeriodOption)}>
+            <SelectTrigger className="w-44 rounded-xl border-white/10 bg-white/[0.02] text-white">
               <Calendar className="mr-2 h-4 w-4" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-[#1a1a1a] border-white/10">
-              <SelectItem value="week" className="text-white">Última Semana</SelectItem>
+              <SelectItem value="today" className="text-white">Hoje</SelectItem>
+              <SelectItem value="yesterday" className="text-white">Ontem</SelectItem>
+              <SelectItem value="week" className="text-white">Últimos 7 Dias</SelectItem>
               <SelectItem value="month" className="text-white">Último Mês</SelectItem>
               <SelectItem value="quarter" className="text-white">Último Trimestre</SelectItem>
               <SelectItem value="year" className="text-white">Último Ano</SelectItem>
+              <SelectItem value="custom" className="text-white">Personalizado</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {period === "custom" && (
+            <div className="flex gap-2 items-center">
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                className="rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-white"
+              />
+              <span className="text-white/50">até</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                className="rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-white"
+              />
+            </div>
+          )}
+
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-40 rounded-xl border-white/10 bg-white/[0.02] text-white">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent className="bg-[#1a1a1a] border-white/10">
+              <SelectItem value="all" className="text-white">Todos Status</SelectItem>
+              <SelectItem value="pendente" className="text-white">Pendente</SelectItem>
+              <SelectItem value="confirmado" className="text-white">Confirmado</SelectItem>
+              <SelectItem value="em_andamento" className="text-white">Em Andamento</SelectItem>
+              <SelectItem value="concluido" className="text-white">Concluído</SelectItem>
+              <SelectItem value="cancelado" className="text-white">Cancelado</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-40 rounded-xl border-white/10 bg-white/[0.02] text-white">
+              <SelectValue placeholder="Tipo" />
+            </SelectTrigger>
+            <SelectContent className="bg-[#1a1a1a] border-white/10">
+              <SelectItem value="all" className="text-white">Todos Tipos</SelectItem>
+              <SelectItem value="convencional" className="text-white">Convencional</SelectItem>
+              <SelectItem value="inverter" className="text-white">Inverter</SelectItem>
+              <SelectItem value="produtos" className="text-white">Produtos</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -402,148 +591,150 @@ export default function RelatoriosPage() {
 
       {/* KPI Cards */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#E30613]/10">
-              <Wrench className="h-5 w-5 text-[#E30613]" />
+        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#E30613]/10">
+              <ShoppingBag className="h-4 w-4 text-[#E30613]" />
             </div>
             <div>
-              <p className="text-xl font-bold text-white">{formatCurrency(totals.convencional)}</p>
-              <p className="text-xs text-white/50">Convencional</p>
+              <p className="text-lg font-bold text-white">{orderCount}</p>
+              <p className="text-[10px] text-white/50">Pedidos</p>
             </div>
           </div>
         </div>
 
-        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#8B5CF6]/10">
-              <TrendingUp className="h-5 w-5 text-[#8B5CF6]" />
+        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-500/10">
+              <DollarSign className="h-4 w-4 text-green-500" />
             </div>
             <div>
-              <p className="text-xl font-bold text-white">{formatCurrency(totals.inverter)}</p>
-              <p className="text-xs text-white/50">Inverter</p>
+              <p className="text-lg font-bold text-white">{formatCurrency(avgTicket)}</p>
+              <p className="text-[10px] text-white/50">Ticket Médio</p>
             </div>
           </div>
         </div>
 
-        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#C9A84C]/10">
-              <Package className="h-5 w-5 text-[#C9A84C]" />
+        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-500/10">
+              <TrendingUp className="h-4 w-4 text-green-500" />
             </div>
             <div>
-              <p className="text-xl font-bold text-white">{formatCurrency(totals.produtos)}</p>
-              <p className="text-xs text-white/50">Produtos</p>
+              <p className="text-lg font-bold text-green-500">{formatCurrency(totals.recebida)}</p>
+              <p className="text-[10px] text-white/50">Recebido</p>
             </div>
           </div>
         </div>
 
-        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
-              <DollarSign className="h-5 w-5 text-green-500" />
+        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-500/10">
+              <Activity className="h-4 w-4 text-yellow-500" />
             </div>
             <div>
-              <p className="text-xl font-bold text-white">{formatCurrency(totals.total)}</p>
-              <p className="text-xs text-white/50">Total</p>
+              <p className="text-lg font-bold text-yellow-500">{formatCurrency(totals.pendente)}</p>
+              <p className="text-[10px] text-white/50">Pendente</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Revenue Breakdown */}
+      <div className="grid gap-4 grid-cols-3 lg:grid-cols-5">
+        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#E30613]/10">
+              <Wrench className="h-4 w-4 text-[#E30613]" />
+            </div>
+            <div>
+              <p className="text-lg font-bold text-[#E30613]">{formatCurrency(totals.convencional)}</p>
+              <p className="text-[10px] text-white/50">Convencional</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#8B5CF6]/10">
+              <Activity className="h-4 w-4 text-[#8B5CF6]" />
+            </div>
+            <div>
+              <p className="text-lg font-bold text-[#8B5CF6]">{formatCurrency(totals.inverter)}</p>
+              <p className="text-[10px] text-white/50">Inverter</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#C9A84C]/10">
+              <Package className="h-4 w-4 text-[#C9A84C]" />
+            </div>
+            <div>
+              <p className="text-lg font-bold text-[#C9A84C]">{formatCurrency(totals.produtos)}</p>
+              <p className="text-[10px] text-white/50">Produtos</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-white/[0.06] bg-[#0f0f0f] p-4 lg:col-span-2">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-500/10">
+              <DollarSign className="h-4 w-4 text-green-500" />
+            </div>
+            <div>
+              <p className="text-lg font-bold text-green-500">{formatCurrency(totals.total)}</p>
+              <p className="text-[10px] text-white/50">Total Geral</p>
             </div>
           </div>
         </div>
       </div>
 
       {/* Charts */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Line Chart */}
+      <RelatoriosCharts
+        chartDataForPie={chartDataForPie}
+        revenueData={revenueData}
+        statusBreakdown={statusBreakdown}
+        totals={totals}
+        loading={loading}
+        formatCurrency={formatCurrency}
+      />
+
+      {/* Top Services */}
+      {topServices.length > 0 && (
         <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-6">
           <h2 className="mb-4 font-montserrat text-lg font-bold text-white">
-            Evolução de Faturamento
+            Top Serviços / Produtos
           </h2>
-
-          {loading ? (
-            <div className="flex h-64 items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-transparent" />
-            </div>
-          ) : revenueData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={revenueData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 10 }} />
-                <YAxis tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 10 }} />
-                <Tooltip
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  formatter={(value: any) => formatCurrency(Number(value))}
-                  contentStyle={{
-                    backgroundColor: "#1a1a1a",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: "8px",
-                  }}
-                />
-                <Legend formatter={(value) => <span className="text-white/70">{value}</span>} />
-                <Line
-                  type="monotone"
-                  dataKey="convencional"
-                  stroke="#E30613"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="inverter"
-                  stroke="#8B5CF6"
-                  strokeWidth={2}
-                  dot={false}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="produtos"
-                  stroke="#C9A84C"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex h-64 items-center justify-center text-white/50">
-              Sem dados para o período
-            </div>
-          )}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-white/[0.06] text-left">
+                  <th className="pb-3 text-xs font-medium text-white/50">#</th>
+                  <th className="pb-3 text-xs font-medium text-white/50">Nome</th>
+                  <th className="pb-3 text-xs font-medium text-white/50">Qtd Vendida</th>
+                  <th className="pb-3 text-xs font-medium text-white/50">Receita</th>
+                  <th className="pb-3 text-xs font-medium text-white/50">% do Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/[0.04]">
+                {topServices.map((service, idx) => (
+                  <tr key={service.name} className="group hover:bg-white/[0.02]">
+                    <td className="py-3 text-sm text-white/50">{idx + 1}</td>
+                    <td className="py-3 text-sm font-medium text-white">{service.name}</td>
+                    <td className="py-3 text-sm text-white/70">{service.count}</td>
+                    <td className="py-3 text-sm font-medium text-green-400">{formatCurrency(service.revenue)}</td>
+                    <td className="py-3 text-sm text-white/70">
+                      {totals.total > 0 ? ((service.revenue / totals.total) * 100).toFixed(1) : 0}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-
-        {/* Bar Chart */}
-        <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-6">
-          <h2 className="mb-4 font-montserrat text-lg font-bold text-white">
-            Comparativo por Categoria
-          </h2>
-
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart
-              data={[
-                { name: "Convencional", value: totals.convencional },
-                { name: "Inverter", value: totals.inverter },
-                { name: "Produtos", value: totals.produtos },
-              ]}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-              <XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,0.7)", fontSize: 12 }} />
-              <YAxis tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 12 }} />
-              <Tooltip
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                formatter={(value: any) => formatCurrency(Number(value))}
-                contentStyle={{
-                  backgroundColor: "#1a1a1a",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: "8px",
-                }}
-              />
-              <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                <Cell fill="#E30613" />
-                <Cell fill="#8B5CF6" />
-                <Cell fill="#C9A84C" />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+      )}
 
       {/* Export Section */}
       <div className="rounded-2xl border border-white/[0.06] bg-[#0f0f0f] p-6">

@@ -34,14 +34,16 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  // Refresh the auth session — stores token in encrypted httpOnly cookies
-  await supabase.auth.getUser();
+  // Only refresh auth session for private/admin pages
+  if (request.nextUrl.pathname.startsWith("/private")) {
+    await supabase.auth.getUser();
+  }
 
   return supabaseResponse;
 }
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

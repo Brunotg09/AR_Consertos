@@ -81,13 +81,34 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  images: { unoptimized: true },
+  images: {
+    formats: ['image/avif', 'image/webp'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '*.supabase.co',
+        pathname: '/storage/v1/object/public/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.supabase.in',
+        pathname: '/storage/v1/object/public/**',
+      },
+    ],
+  },
   env: {
     ARC_SYS_GATEWAY_ENDPOINT: process.env.NEXT_PUBLIC_SUPABASE_URL || '',
     ARC_SYS_CLIENT_PASSKEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
   },
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
+  },
+  async redirects() {
+    return [
+      // Legacy format: /servico/{name}--{id} -> /servico/{category}/{name}
+      // Note: We can't dynamically redirect without knowing the category,
+      // so we keep the old format working via the catch-all route
+    ];
   },
 };
 

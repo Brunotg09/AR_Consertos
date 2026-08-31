@@ -4,8 +4,34 @@ import { Toaster } from "@/components/ui/sonner";
 import { CartProvider } from "@/contexts/CartContext";
 import { OfflineBanner } from "@/hooks/useOffline";
 import type { Metadata } from "next";
+import { Inter, Montserrat, Oswald, Bebas_Neue } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const montserrat = Montserrat({
+  subsets: ["latin"],
+  variable: "--font-montserrat",
+  display: "swap",
+});
+
+const oswald = Oswald({
+  subsets: ["latin"],
+  variable: "--font-oswald",
+  display: "swap",
+});
+
+const bebasNeue = Bebas_Neue({
+  subsets: ["latin"],
+  variable: "--font-bebas",
+  weight: "400",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://ar-consertos.vercel.app"),
@@ -96,7 +122,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR" className="overflow-x-hidden" suppressHydrationWarning>
+    <html lang="pt-BR" className={`overflow-x-hidden ${inter.variable} ${montserrat.variable} ${oswald.variable} ${bebasNeue.variable}`} suppressHydrationWarning>
       <head>
         <meta
           name="viewport"

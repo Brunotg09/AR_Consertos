@@ -490,22 +490,25 @@ function SearchOverlay({ query, setQuery, onClose }: { query: string; setQuery: 
                 {results.length} resultado(s)
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {results.slice(0, 6).map((service) => (
-                  <Link
-                    key={service.id}
-                    href={`/servico/${service.service_id}`}
-                    onClick={onClose}
-                    className="flex items-center gap-3 rounded-xl p-3 text-left transition-all hover:bg-white/[0.04]"
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(227,6,19,0.1)" }}>
-                      <Wrench className="h-5 w-5" style={{ color: "#E30613" }} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-white">{service.name}</div>
-                      <div className="truncate text-[10px]" style={{ color: "#888888" }}>{service.category}</div>
-                    </div>
-                  </Link>
-                ))}
+                {results.slice(0, 6).map((service) => {
+                  const seoUrl = `/servico/${service.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}/${service.service_id || service.id}`;
+                  return (
+                    <Link
+                      key={service.id}
+                      href={seoUrl}
+                      onClick={onClose}
+                      className="flex items-center gap-3 rounded-xl p-3 text-left transition-all hover:bg-white/[0.04]"
+                    >
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ backgroundColor: "rgba(227,6,19,0.1)" }}>
+                        <Wrench className="h-5 w-5" style={{ color: "#E30613" }} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-white">{service.name}</div>
+                        <div className="truncate text-[10px]" style={{ color: "#888888" }}>{service.category}</div>
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
               {results.length > 6 && (
                 <Link

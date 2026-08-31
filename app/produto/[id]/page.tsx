@@ -51,6 +51,46 @@ export default function ProdutoDetalhePage() {
     trigger("buy");
   }, [trigger]);
 
+  // Dynamic SEO metadata
+  useEffect(() => {
+    if (product) {
+      const siteName = "A.R Conserto";
+      const title = `${product.name} | ${siteName} - Loja`;
+      document.title = title;
+
+      const metaDesc = product.description
+        ? `${product.name}: ${product.description} Confira preço e disponibilidade!`
+        : `${product.name} - ${product.category || "Produto"} disponível na ${siteName}. Confira!`;
+      
+      let metaTag = document.querySelector('meta[name="description"]');
+      if (!metaTag) {
+        metaTag = document.createElement("meta");
+        metaTag.setAttribute("name", "description");
+        document.head.appendChild(metaTag);
+      }
+      metaTag.setAttribute("content", metaDesc.substring(0, 160));
+
+      const ogTitle = document.querySelector('meta[property="og:title"]');
+      if (ogTitle) ogTitle.setAttribute("content", title);
+      
+      const ogDesc = document.querySelector('meta[property="og:description"]');
+      if (ogDesc) ogDesc.setAttribute("content", metaDesc.substring(0, 160));
+
+      const ogImage = product.images?.[0];
+      const ogImageTag = document.querySelector('meta[property="og:image"]');
+      if (ogImage && ogImageTag) ogImageTag.setAttribute("content", ogImage);
+
+      const canonicalUrl = `https://ar-consertos.vercel.app/produto/${product.id}`;
+      let canonicalTag = document.querySelector('link[rel="canonical"]');
+      if (!canonicalTag) {
+        canonicalTag = document.createElement("link");
+        canonicalTag.setAttribute("rel", "canonical");
+        document.head.appendChild(canonicalTag);
+      }
+      canonicalTag.setAttribute("href", canonicalUrl);
+    }
+  }, [product]);
+
   const fetchProduct = useCallback(async () => {
     setLoading(true);
     try {
@@ -152,6 +192,42 @@ export default function ProdutoDetalhePage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      {/* JSON-LD Structured Data for SEO */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Product",
+            name: product.name,
+            description: product.description || `${product.name} disponível na A.R Conserto`,
+            category: product.category,
+            image: product.images?.[0],
+            url: `https://ar-consertos.vercel.app/produto/${product.id}`,
+            brand: {
+              "@type": "Brand",
+              name: "A.R Conserto",
+            },
+            offers: {
+              "@type": "Offer",
+              price: discountedPrice || product.price,
+              priceCurrency: "BRL",
+              availability: hasStock
+                ? "https://schema.org/InStock"
+                : "https://schema.org/OutOfStock",
+              seller: {
+                "@type": "LocalBusiness",
+                name: "A.R Conserto",
+              },
+            },
+            condition: product.condition === "novo"
+              ? "https://schema.org/NewCondition"
+              : product.condition === "usado"
+                ? "https://schema.org/UsedCondition"
+                : "https://schema.org/RefurbishedCondition",
+          }),
+        }}
+      />
       <div className="space-y-8 lg:space-y-12">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-xs" style={{ color: "#666666" }}>
