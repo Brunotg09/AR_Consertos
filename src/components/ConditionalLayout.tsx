@@ -1,9 +1,10 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import dynamic from "next/dynamic";
-import { Header } from "@/components/Header";
+import { CookieBanner } from "@/components/CookieBanner";
 import { Footer } from "@/components/Footer";
+import { Header } from "@/components/Header";
+import dynamic from "next/dynamic";
+import { usePathname } from "next/navigation";
 
 const InstallBanner = dynamic(
   () => import("@/components/InstallBanner").then((mod) => mod.InstallBanner),
@@ -23,8 +24,9 @@ const FloatingWidgetProvider = dynamic(
 export function ConditionalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isPrivate = pathname.startsWith("/private");
+  const isParceiro = pathname.startsWith("/parceiro");
 
-  if (isPrivate) {
+  if (isPrivate || isParceiro) {
     return <>{children}</>;
   }
 
@@ -32,9 +34,11 @@ export function ConditionalLayout({ children }: { children: React.ReactNode }) {
     <FloatingWidgetProvider>
       <UpdateBanner />
       <Header />
-      <main className="flex-1 w-full overflow-x-hidden pb-8 pt-[140px] sm:pt-[160px]">{children}</main>
+      <main className="flex-1 w-full overflow-x-hidden pb-8 pt-[110px] sm:pt-[130px]">{children}</main>
+
       <Footer />
       <InstallBanner />
+      <CookieBanner />
     </FloatingWidgetProvider>
   );
 }

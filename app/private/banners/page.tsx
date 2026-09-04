@@ -11,6 +11,8 @@ import {
   Save,
   ChevronUp,
   ChevronDown,
+  Loader2,
+  ScanSearch,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -71,6 +73,81 @@ async function deleteFromStorage(bucket: string, url: string | null) {
   await supabase.storage.from(bucket).remove([path]);
 }
 
+// ============================================================
+// IMAGE COMPRESSION — Converte para WebP e redimensiona
+// ============================================================
+function compressImageToWebP(file: File, maxKB = 200): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+
+      // Largura máxima 1920px, altura proporcional 2.4:1
+      const MAX_WIDTH = 1920;
+      const MAX_HEIGHT = 800;
+      let w = img.width;
+      let h = img.height;
+
+      // Redimensiona proporcionalmente para caber em 1920x800
+      if (w > MAX_WIDTH || h > MAX_HEIGHT) {
+        const ratioW = MAX_WIDTH / w;
+        const ratioH = MAX_HEIGHT / h;
+        const ratio = Math.min(ratioW, ratioH);
+        w = Math.round(w * ratio);
+        h = Math.round(h * ratio);
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { reject(new Error("Não foi possível criar canvas")); return; }
+
+      ctx.drawImage(img, 0, 0, w, h);
+
+      // Tenta WebP com qualidade que resulte em <= maxKB
+      const targetBytes = maxKB * 1024;
+      let quality = 0.82;
+      let attempts = 0;
+
+      const tryCompress = () => {
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) { reject(new Error("Erro ao comprimir imagem")); return; }
+
+            if (blob.size > targetBytes && quality > 0.3 && attempts < 6) {
+              quality -= 0.1;
+              attempts++;
+              tryCompress();
+              return;
+            }
+
+            const compressedFile = new File([blob], file.name.replace(/\.[^.]+$/, ".webp"), {
+              type: "image/webp",
+              lastModified: Date.now(),
+            });
+            resolve(compressedFile);
+          },
+          "image/webp",
+          quality
+        );
+      };
+
+      tryCompress();
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Erro ao carregar imagem"));
+    };
+
+    img.src = url;
+  });
+}
+
 export default function BannersPage() {
   const [banners, setBanners] = useState<Banner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,6 +156,7 @@ export default function BannersPage() {
   const [selectedBanner, setSelectedBanner] = useState<Banner | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [scanning, setScanning] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -89,7 +167,7 @@ export default function BannersPage() {
     sort_order: 0,
     accent_color: "#E30613",
     cta_label: "Saiba Mais",
-      icon_name: "none" as string,
+    icon_name: "none" as string,
   });
   const [formImage, setFormImage] = useState("");
 
@@ -103,7 +181,6 @@ export default function BannersPage() {
       if (error) throw error;
       setBanners(data || []);
     } catch (error) {
-      console.error("Error fetching banners:", error);
       toast.error("Erro ao carregar banners");
     } finally {
       setLoading(false);
@@ -167,27 +244,41 @@ export default function BannersPage() {
     setUploading(true);
     try {
       const file = files[0];
-      const fileExt = file.name.split(".").pop();
-      const fileName = `banner-${Date.now()}.${fileExt}`;
+
+      // Validação de tamanho ORIGINAL (>10MB avisa)
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error("Imagem muito grande. Máximo: 10MB original.");
+        setUploading(false);
+        return;
+      }
+
+      toast.info("Processando imagem...", { duration: 3000 });
+
+      // Comprimir para WebP
+      const compressed = await compressImageToWebP(file, 200);
+
+      const sizeKB = Math.round(compressed.size / 1024);
+      const fileName = `banner-${Date.now()}.webp`;
       const filePath = `banners/${fileName}`;
 
-       const { error: uploadError } = await supabase.storage
-         .from("banners")
-         .upload(filePath, file);
+      const { error: uploadError } = await supabase.storage
+        .from("banners")
+        .upload(filePath, compressed);
 
-       if (uploadError) throw uploadError;
+      if (uploadError) throw uploadError;
 
-       const { data: { publicUrl } } = supabase.storage
-         .from("banners")
-         .getPublicUrl(filePath);
+      const { data: { publicUrl } } = supabase.storage
+        .from("banners")
+        .getPublicUrl(filePath);
 
       setFormImage(publicUrl);
-      toast.success("Imagem enviada com sucesso");
+      toast.success(`Imagem otimizada: ${sizeKB}KB (WebP)`);
     } catch (error) {
-      console.error("Error uploading image:", error);
       toast.error("Erro ao fazer upload da imagem");
     } finally {
       setUploading(false);
+      // Limpa o input para permitir re-uploader a mesma imagem
+      e.target.value = "";
     }
   };
 
@@ -213,20 +304,20 @@ export default function BannersPage() {
         icon_name: formData.icon_name !== "none" ? formData.icon_name : null,
       };
 
-       if (selectedBanner) {
-         const { error } = await supabase
-           .from("banners")
-           .update(bannerData)
-           .eq("id", selectedBanner.id);
-         if (error) throw error;
+      if (selectedBanner) {
+        const { error } = await supabase
+          .from("banners")
+          .update(bannerData)
+          .eq("id", selectedBanner.id);
+        if (error) throw error;
 
-         // Remove imagem antiga do storage se ela foi substituida
-         const oldImage = selectedBanner.image_url;
-         const newImage = formImage || null;
-         if (oldImage && oldImage !== newImage) {
-           await deleteFromStorage("banners", oldImage);
-         }
-         toast.success("Banner atualizado");
+        // Remove imagem antiga do storage se foi substituída
+        const oldImage = selectedBanner.image_url;
+        const newImage = formImage || null;
+        if (oldImage && oldImage !== newImage) {
+          await deleteFromStorage("banners", oldImage);
+        }
+        toast.success("Banner atualizado");
       } else {
         const { error } = await supabase.from("banners").insert([bannerData]);
         if (error) throw error;
@@ -236,12 +327,11 @@ export default function BannersPage() {
       setEditDialogOpen(false);
       resetForm();
       fetchBanners();
-     } catch (error) {
-       const err = error as { message?: string };
-       const msg = err?.message || "Erro ao salvar banner";
-       console.error("Error saving banner:", error);
-       toast.error(msg);
-     } finally {
+    } catch (error) {
+      const err = error as { message?: string };
+      const msg = err?.message || "Erro ao salvar banner";
+      toast.error(msg);
+    } finally {
       setSaving(false);
     }
   };
@@ -249,27 +339,26 @@ export default function BannersPage() {
   const handleDelete = async () => {
     if (!selectedBanner) return;
 
-     try {
-       const { error } = await supabase
-         .from("banners")
-         .delete()
-         .eq("id", selectedBanner.id);
+    try {
+      const { error } = await supabase
+        .from("banners")
+        .delete()
+        .eq("id", selectedBanner.id);
 
-       if (error) throw error;
+      if (error) throw error;
 
-       // Remove imagem do storage
-       await deleteFromStorage("banners", selectedBanner.image_url);
+      // Remove imagem do storage
+      await deleteFromStorage("banners", selectedBanner.image_url);
 
-       toast.success("Banner removido");
-       setDeleteDialogOpen(false);
-       setSelectedBanner(null);
-       fetchBanners();
-     } catch (error) {
-       const err = error as { message?: string };
-       const msg = err?.message || "Erro ao excluir banner";
-       console.error("Error deleting banner:", error);
-       toast.error(msg);
-     }
+      toast.success("Banner removido");
+      setDeleteDialogOpen(false);
+      setSelectedBanner(null);
+      fetchBanners();
+    } catch (error) {
+      const err = error as { message?: string };
+      const msg = err?.message || "Erro ao excluir banner";
+      toast.error(msg);
+    }
   };
 
   const toggleActive = async (banner: Banner) => {
@@ -286,7 +375,6 @@ export default function BannersPage() {
     } catch (error) {
       const err = error as { message?: string };
       const msg = err?.message || "Erro ao atualizar banner";
-      console.error("Error toggling banner:", error);
       toast.error(msg);
     }
   };
@@ -313,13 +401,75 @@ export default function BannersPage() {
       if (err2) throw err2;
 
       fetchBanners();
-     } catch (error) {
-       const err = error as { message?: string };
-       const msg = err?.message || "Erro ao reordenar banners";
-       console.error("Error reordering banners:", error);
-       toast.error(msg);
-     }
-   };
+    } catch (error) {
+      const err = error as { message?: string };
+      const msg = err?.message || "Erro ao reordenar banners";
+      toast.error(msg);
+    }
+  };
+
+  // ============================================================
+  // VARREDURA — Remove imagens órfãs do storage
+  // ============================================================
+  const scanStorage = async () => {
+    setScanning(true);
+    try {
+      // 1. Listar todos os arquivos do bucket banners
+      const { data: files, error: listError } = await supabase.storage
+        .from("banners")
+        .list("banners", { limit: 200 });
+
+      if (listError) throw listError;
+
+      const allFiles = files || [];
+      if (allFiles.length === 0) {
+        toast.info("Nenhuma imagem no storage.");
+        setScanning(false);
+        return;
+      }
+
+      // 2. Pegar todas as image_url dos banners ativos no banco
+      const { data: dbBanners } = await supabase
+        .from("banners")
+        .select("image_url");
+
+      const usedPaths = new Set<string>();
+      (dbBanners || []).forEach((b) => {
+        if (b.image_url) {
+          const path = extractStoragePath(b.image_url, "banners");
+          if (path) usedPaths.add(path);
+        }
+      });
+
+      // 3. Encontrar arquivos órfãs (no storage mas não em nenhum banner)
+      const orphans = allFiles.filter((f) => {
+        const fullPath = `banners/${f.name}`;
+        return !usedPaths.has(fullPath);
+      });
+
+      if (orphans.length === 0) {
+        toast.success(`Varredura OK: ${allFiles.length} imagens, nenhuma órfã.`);
+        setScanning(false);
+        return;
+      }
+
+      // 4. Deletar órfãs
+      const pathsToDelete = orphans.map((f) => `banners/${f.name}`);
+      const { error: delError } = await supabase.storage
+        .from("banners")
+        .remove(pathsToDelete);
+
+      if (delError) throw delError;
+
+      toast.success(
+        `Varredura concluída: ${orphans.length} imagem(ns) órfã(s) removida(s) de ${allFiles.length} total.`
+      );
+    } catch (error) {
+      toast.error("Erro ao varrer storage");
+    } finally {
+      setScanning(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -329,13 +479,28 @@ export default function BannersPage() {
           <h1 className="font-montserrat text-2xl font-bold text-white">Banners</h1>
           <p className="mt-1 text-sm text-white/50">Gerencie os banners do carrossel da home</p>
         </div>
-        <Button
-          onClick={openCreateDialog}
-          className="rounded-xl bg-[#E30613] text-white hover:bg-[#E30613]/90"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Banner
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={scanStorage}
+            disabled={scanning}
+            variant="outline"
+            className="rounded-xl border-white/10 text-white/70 hover:bg-white/[0.04]"
+          >
+            {scanning ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <ScanSearch className="mr-2 h-4 w-4" />
+            )}
+            {scanning ? "Varrendo..." : "Varredura"}
+          </Button>
+          <Button
+            onClick={openCreateDialog}
+            className="rounded-xl bg-[#E30613] text-white hover:bg-[#E30613]/90"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Banner
+          </Button>
+        </div>
       </div>
 
       {/* Banners Grid */}
@@ -364,10 +529,13 @@ export default function BannersPage() {
                 banner.active ? "border-white/[0.06]" : "border-white/[0.02] opacity-60"
               }`}
             >
-              {/* Image or Icon */}
+              {/* Image or Icon — proporção 2.4:1 */}
               <div
-                className="aspect-[16/9] w-full overflow-hidden flex items-center justify-center"
-                style={{ backgroundColor: banner.image_url ? "transparent" : `${banner.accent_color || '#E30613'}15` }}
+                className="w-full overflow-hidden flex items-center justify-center"
+                style={{
+                  aspectRatio: "2.4 / 1",
+                  backgroundColor: banner.image_url ? "transparent" : `${banner.accent_color || '#E30613'}15`,
+                }}
               >
                 {banner.image_url ? (
                   <img
@@ -492,7 +660,7 @@ export default function BannersPage() {
                 Imagem {formData.icon_name !== "none" ? "(opcional se usar ícone)" : "*"}
               </Label>
               <p className="text-[10px] text-white/40">
-                Tamanho ideal: <strong className="text-white/60">1920x800px</strong> (proporção 2.4:1) · Formato WebP ou JPG · Máx. 200KB · Conteúdo importante no centro
+                Tamanho ideal: <strong className="text-white/60">1920x800px</strong> (proporção 2.4:1) · Conversão automática para WebP · Máx. 200KB
               </p>
 
               {formImage ? (
@@ -500,7 +668,8 @@ export default function BannersPage() {
                   <img
                     src={formImage}
                     alt="Preview"
-                    className="aspect-[16/9] w-full rounded-lg object-cover"
+                    className="w-full rounded-lg object-cover"
+                    style={{ aspectRatio: "2.4 / 1" }}
                   />
                   <button
                     type="button"
@@ -511,13 +680,19 @@ export default function BannersPage() {
                   </button>
                 </div>
               ) : (
-                <label className="flex aspect-[16/9] w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-white/10 transition-colors hover:border-white/20">
+                <label className="flex w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-white/10 transition-colors hover:border-white/20"
+                  style={{ aspectRatio: "2.4 / 1" }}
+                >
                   {uploading ? (
-                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-transparent" />
+                    <div className="flex flex-col items-center gap-2">
+                      <Loader2 className="h-8 w-8 animate-spin text-[#C9A84C]" />
+                      <span className="text-xs text-[#C9A84C]">Comprimindo e enviando...</span>
+                    </div>
                   ) : (
                     <>
                       <Upload className="h-8 w-8 text-white/30" />
                       <span className="mt-2 text-sm text-white/30">Clique para enviar</span>
+                      <span className="mt-1 text-[10px] text-white/20">Convertido automaticamente para WebP</span>
                     </>
                   )}
                   <input
@@ -559,7 +734,7 @@ export default function BannersPage() {
 
             <div className="space-y-2">
               <Label htmlFor="link" className="text-white/70">
-                Link do Botão
+                Link (o banner inteiro fica clicável)
               </Label>
               <Input
                 id="link"
@@ -597,30 +772,17 @@ export default function BannersPage() {
                 </SelectTrigger>
                 <SelectContent className="h-[300px] max-h-[300px] bg-[#0f0f0f] border-white/10 text-white" sideOffset={8}>
                   <SelectItem value="none" className="pl-8">Nenhum (usar imagem)</SelectItem>
-                  <SelectItem value="Wrench" className="pl-8">🔧 Wrench (Conserto)</SelectItem>
-                  <SelectItem value="Cpu" className="pl-8">💻 Cpu (Eletrônica)</SelectItem>
-                  <SelectItem value="Award" className="pl-8">🏆 Award (Garantia)</SelectItem>
-                  <SelectItem value="Zap" className="pl-8">⚡ Zap (Energia)</SelectItem>
-                  <SelectItem value="Settings" className="pl-8">⚙️ Settings (Config)</SelectItem>
-                  <SelectItem value="WashingMachine" className="pl-8">🧺 WashingMachine (Lavadora)</SelectItem>
-                  <SelectItem value="Refrigerator" className="pl-8">🧊 Refrigerator (Geladeira)</SelectItem>
-                  <SelectItem value="Wine" className="pl-8">🍷 Wine (Vinhos)</SelectItem>
-                  <SelectItem value="CupSoda" className="pl-8">🥤 CupSoda (Bebidas)</SelectItem>
-                  <SelectItem value="Flame" className="pl-8">🔥 Flame (Fogo)</SelectItem>
-                  <SelectItem value="CookingPot" className="pl-8">🍲 CookingPot (Cozinha)</SelectItem>
-                  <SelectItem value="Coffee" className="pl-8">☕ Coffee (Café)</SelectItem>
-                  <SelectItem value="Blender" className="pl-8">🧃 Blender (Mixer)</SelectItem>
-                  <SelectItem value="ChefHat" className="pl-8">👨‍🍳 ChefHat (Chef)</SelectItem>
-                  <SelectItem value="Scissors" className="pl-8">✂️ Scissors (Tesoura)</SelectItem>
-                  <SelectItem value="Wind" className="pl-8">💨 Wind (Ventilador)</SelectItem>
-                  <SelectItem value="Sparkles" className="pl-8">✨ Sparkles (Brilho)</SelectItem>
-                  <SelectItem value="Hammer" className="pl-8">🔨 Hammer (Martelo)</SelectItem>
-                  <SelectItem value="Construction" className="pl-8">🏗️ Construction (Construção)</SelectItem>
-                  <SelectItem value="Droplet" className="pl-8">💧 Droplet (Água)</SelectItem>
-                  <SelectItem value="Fan" className="pl-8">🌀 Fan (Ventilador)</SelectItem>
-                  <SelectItem value="Radio" className="pl-8">📻 Radio (Rádio)</SelectItem>
-                  <SelectItem value="Bike" className="pl-8">🚲 Bike (Bicicleta)</SelectItem>
-                  <SelectItem value="Sun" className="pl-8">☀️ Sun (Sol)</SelectItem>
+                  <SelectItem value="Wrench" className="pl-8">Wrench (Conserto)</SelectItem>
+                  <SelectItem value="Cpu" className="pl-8">Cpu (Eletrônica)</SelectItem>
+                  <SelectItem value="Award" className="pl-8">Award (Garantia)</SelectItem>
+                  <SelectItem value="Zap" className="pl-8">Zap (Energia)</SelectItem>
+                  <SelectItem value="Settings" className="pl-8">Settings (Config)</SelectItem>
+                  <SelectItem value="WashingMachine" className="pl-8">WashingMachine (Lavadora)</SelectItem>
+                  <SelectItem value="Refrigerator" className="pl-8">Refrigerator (Geladeira)</SelectItem>
+                  <SelectItem value="Wind" className="pl-8">Wind (Ventilador)</SelectItem>
+                  <SelectItem value="Sparkles" className="pl-8">Sparkles (Brilho)</SelectItem>
+                  <SelectItem value="Hammer" className="pl-8">Hammer (Martelo)</SelectItem>
+                  <SelectItem value="Droplet" className="pl-8">Droplet (Água)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -701,7 +863,7 @@ export default function BannersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">Excluir Banner</AlertDialogTitle>
             <AlertDialogDescription className="text-white/70">
-              Tem certeza que deseja excluir este banner? Esta ação não pode ser desfeita.
+              Tem certeza que deseja excluir este banner? A imagem será removida do storage.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

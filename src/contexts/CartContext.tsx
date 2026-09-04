@@ -3,6 +3,18 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 
+export interface ServicePricingInterval {
+  value: string;
+  label: string;
+  days: number;
+  price?: number;
+}
+
+export interface ServicePricingConfig {
+  model?: "avulso" | "assinatura" | "ambos";
+  intervals?: ServicePricingInterval[];
+}
+
 export interface CartServiceItem {
   id: string;
   type: "service";
@@ -17,6 +29,10 @@ export interface CartServiceItem {
     totalImages: number;
     iconName: string;
     discountPercentage: number;
+    partnerId?: string | null;
+    price?: number | null;
+    pricingConfig?: ServicePricingConfig | null;
+    selectedInterval?: string | null;
   };
 }
 
@@ -35,6 +51,16 @@ export interface CartProductItem {
 
 export type CartItem = CartServiceItem | CartProductItem;
 
+function getServicePrice(item: CartServiceItem): number {
+  const { price, pricingConfig, selectedInterval } = item.service;
+  if (!pricingConfig?.intervals?.length || !selectedInterval) {
+    return price || 0;
+  }
+  const interval = pricingConfig.intervals.find((i) => i.value === selectedInterval);
+  if (interval?.price) return interval.price;
+  return price || 0;
+}
+
 interface CartContextValue {
   items: CartItem[];
   addService: (service: CartServiceItem["service"]) => boolean;
@@ -46,9 +72,10 @@ interface CartContextValue {
     condition: string | null;
     category: string | null;
     maxStock: number;
-  }) => void;
+  }, qty?: number) => void;
   removeItem: (id: string) => void;
   updateProductQuantity: (id: string, quantity: number) => void;
+  updateServiceInterval: (id: string, intervalValue: string) => void;
   clearCart: () => void;
   totalItems: number;
   subtotal: number;
@@ -58,31 +85,11 @@ const CartContext = createContext<CartContextValue | null>(null);
 
 const STORAGE_KEY = "arc-cart";
 
-const ENC_KEY = "arc2024x";
-
-function enc(data: string): string {
-  const utf8 = unescape(encodeURIComponent(data));
-  let r = "";
-  for (let i = 0; i < utf8.length; i++) {
-    r += String.fromCharCode(utf8.charCodeAt(i) ^ ENC_KEY.charCodeAt(i % ENC_KEY.length));
-  }
-  return btoa(r);
-}
-
-function dec(encoded: string): string {
-  const data = atob(encoded);
-  let r = "";
-  for (let i = 0; i < data.length; i++) {
-    r += String.fromCharCode(data.charCodeAt(i) ^ ENC_KEY.charCodeAt(i % ENC_KEY.length));
-  }
-  return decodeURIComponent(escape(r));
-}
-
 function loadCart(): CartItem[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(dec(raw));
+    if (raw) return JSON.parse(raw);
   } catch {}
   return [];
 }
@@ -91,7 +98,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>(loadCart);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, enc(JSON.stringify(items)));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
   const addService = useCallback((service: CartServiceItem["service"]): boolean => {
@@ -115,16 +122,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     condition: string | null;
     category: string | null;
     maxStock: number;
-  }) => {
+  }, qty: number = 1) => {
     setItems((prev) => {
       const existing = prev.find(
         (i) => i.type === "product" && i.productId === product.id
       ) as CartProductItem | undefined;
       
       const currentQty = existing?.quantity || 0;
-      const newQty = currentQty + 1;
+      const newQty = currentQty + qty;
       
-      // Validação de estoque
       if (newQty > product.maxStock) {
         toast.error(`Máximo ${product.maxStock} unidade(s) disponível(is) em estoque`);
         return prev;
@@ -146,7 +152,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           productId: product.id,
           name: product.name,
           price: product.price,
-          quantity: 1,
+          quantity: qty,
           maxStock: product.maxStock,
           image: product.image,
           condition: product.condition,
@@ -177,6 +183,22 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  const updateServiceInterval = useCallback((id: string, intervalValue: string) => {
+    setItems((prev) =>
+      prev.map((i) =>
+        i.id === id && i.type === "service"
+          ? {
+              ...(i as CartServiceItem),
+              service: {
+                ...(i as CartServiceItem).service,
+                selectedInterval: intervalValue,
+              },
+            }
+          : i
+      )
+    );
+  }, []);
+
   const clearCart = useCallback(() => {
     setItems([]);
     localStorage.removeItem(STORAGE_KEY);
@@ -189,6 +211,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const subtotal = items.reduce((sum, i) => {
     if (i.type === "product") return sum + i.price * i.quantity;
+    if (i.type === "service") return sum + getServicePrice(i);
     return sum;
   }, 0);
 
@@ -200,6 +223,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         addProduct,
         removeItem,
         updateProductQuantity,
+        updateServiceInterval,
         clearCart,
         totalItems,
         subtotal,
@@ -215,3 +239,5 @@ export function useCart() {
   if (!ctx) throw new Error("useCart must be used within CartProvider");
   return ctx;
 }
+
+export { getServicePrice };

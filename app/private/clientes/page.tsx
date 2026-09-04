@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { RefreshCw } from "lucide-react";
 
 interface Cliente {
   id: number;
@@ -69,6 +70,7 @@ export default function ClientesPage() {
   const [saving, setSaving] = useState(false);
   const [matchingProfiles, setMatchingProfiles] = useState<Profile[]>([]);
   const [searchingProfiles, setSearchingProfiles] = useState(false);
+  const [subCounts, setSubCounts] = useState<Record<number, number>>({});
 
   // Form state
   const [formData, setFormData] = useState({
@@ -95,7 +97,6 @@ export default function ClientesPage() {
       if (error) throw error;
       setClientes(data || []);
     } catch (error) {
-      console.error("Error fetching clientes:", error);
     } finally {
       setLoading(false);
     }
@@ -104,6 +105,25 @@ export default function ClientesPage() {
   useEffect(() => {
     fetchClientes();
   }, [fetchClientes]);
+
+  useEffect(() => {
+    if (clientes.length === 0) return;
+    const fetchSubCounts = async () => {
+      const { data } = await supabase
+        .from("subscriptions")
+        .select("client_id")
+        .in("status", ["active", "paused"]);
+      if (!data) return;
+      const counts: Record<number, number> = {};
+      data.forEach((sub: any) => {
+        if (sub.client_id) {
+          counts[sub.client_id] = (counts[sub.client_id] || 0) + 1;
+        }
+      });
+      setSubCounts(counts);
+    };
+    fetchSubCounts();
+  }, [clientes]);
 
   const filteredClientes = clientes.filter(
     (c) =>
@@ -195,7 +215,6 @@ export default function ClientesPage() {
 
       setMatchingProfiles(filtered);
     } catch (error) {
-      console.error("Error searching profiles:", error);
     } finally {
       setSearchingProfiles(false);
     }
@@ -239,7 +258,6 @@ export default function ClientesPage() {
       resetForm();
       fetchClientes();
     } catch (error) {
-      console.error("Error saving cliente:", error);
       alert("Erro ao salvar cliente");
     } finally {
       setSaving(false);
@@ -260,7 +278,6 @@ export default function ClientesPage() {
       setSelectedCliente(null);
       fetchClientes();
     } catch (error) {
-      console.error("Error deleting cliente:", error);
       alert("Erro ao excluir cliente");
     }
   };
@@ -318,7 +335,6 @@ export default function ClientesPage() {
       fetchClientes();
       toast.success("Perfil vinculado e dados atualizados");
     } catch (error) {
-      console.error("Error linking profile:", error);
       alert("Erro ao vincular perfil");
     }
   };
@@ -332,7 +348,6 @@ export default function ClientesPage() {
       if (error) throw error;
       fetchClientes();
     } catch (error) {
-      console.error("Error unlinking profile:", error);
       alert("Erro ao desvincular perfil");
     }
   };
@@ -454,6 +469,15 @@ export default function ClientesPage() {
                     </td>
                     <td className="p-4">
                       <div className="flex gap-2">
+                        {subCounts[cliente.id] != null && subCounts[cliente.id] > 0 && (
+                          <a
+                            href={`/private/assinaturas?client=${cliente.id}`}
+                            className="flex items-center gap-1 rounded-lg bg-[#3B82F6]/10 px-2 py-1 text-xs font-medium text-[#3B82F6] transition-colors hover:bg-[#3B82F6]/20"
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                            {subCounts[cliente.id]} {subCounts[cliente.id] === 1 ? "assinatura" : "assinaturas"}
+                          </a>
+                        )}
                         <button
                           onClick={() => openEditDialog(cliente)}
                           className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] transition-colors hover:bg-white/[0.08]"

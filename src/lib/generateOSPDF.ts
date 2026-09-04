@@ -231,7 +231,6 @@ export async function generateOSPDF(
     margin: { left: margin, right: margin },
   });
 
-  // @ts-ignore
   y = doc.lastAutoTable?.finalY || tableY + 20;
   y += 8;
 
@@ -587,7 +586,6 @@ export async function generateSingleItemOSPDF(
     margin: { left: margin, right: margin },
   });
 
-  // @ts-ignore
   y = doc.lastAutoTable?.finalY || tableY + 20;
   y += 8;
 

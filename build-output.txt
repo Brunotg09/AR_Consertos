@@ -1,0 +1,64 @@
+   Creating an optimized production build...
+> [PWA] Compile server
+> [PWA] Compile client (static)
+> [PWA] Auto register service worker with: C:\Users\Public\projetos\ar-conserto\AR_Consertos-main\node_modules\next-pwa\register.js
+> [PWA] Service worker: C:\Users\Public\projetos\ar-conserto\AR_Consertos-main\public\sw.js
+> [PWA]   url: /sw.js
+> [PWA]   scope: /
+> [PWA] Fallback to precache routes when fetch failed from cache or network:
+> [PWA]   document (page): /offline
+> [PWA] Compile server
+ ÔÜá Compiled with warnings
+
+./node_modules/@supabase/supabase-js/dist/index.cjs
+Critical dependency: the request of a dependency is an expression
+
+Import trace for requested module:
+./node_modules/@supabase/supabase-js/dist/index.cjs
+./node_modules/@supabase/ssr/dist/main/createBrowserClient.js
+./node_modules/@supabase/ssr/dist/main/index.js
+./src/lib/supabase.ts
+./src/contexts/TwoFAProvider.tsx
+
+./node_modules/@supabase/supabase-js/dist/index.cjs
+Critical dependency: the request of a dependency is an expression
+
+Import trace for requested module:
+./node_modules/@supabase/supabase-js/dist/index.cjs
+./node_modules/@supabase/ssr/dist/main/createBrowserClient.js
+./node_modules/@supabase/ssr/dist/main/index.js
+./src/lib/supabase.ts
+./app/sitemap.ts
+./node_modules/next/dist/build/webpack/loaders/next-metadata-route-loader.js?page=%2Fsitemap.xml%2Froute&isDynamic=1!./app/sitemap.ts?__next_metadata_route__
+
+./node_modules/@supabase/supabase-js/dist/index.cjs
+Critical dependency: the request of a dependency is an expression
+
+Import trace for requested module:
+./node_modules/@supabase/supabase-js/dist/index.cjs
+./node_modules/@supabase/ssr/dist/main/createBrowserClient.js
+./node_modules/@supabase/ssr/dist/main/index.js
+./app/auth/callback/route.ts
+
+   Skipping linting
+   Checking validity of types...
+Failed to compile.
+
+./app/servico/[...slug]/page.tsx:289:7
+Type error: Type '{ model?: "avulso" | "assinatura" | "ambos" | undefined; intervals?: { value: string; label: string; days: number; price?: number | undefined; }[] | undefined; } | null' is not assignable to type 'ServicePricingConfig | null | undefined'.
+  Type '{ model?: "avulso" | "assinatura" | "ambos" | undefined; intervals?: { value: string; label: string; days: number; price?: number | undefined; }[] | undefined; }' is not assignable to type 'ServicePricingConfig'.
+    Types of property 'intervals' are incompatible.
+      Type '{ value: string; label: string; days: number; price?: number | undefined; }[] | undefined' is not assignable to type 'ServicePricingInterval[] | undefined'.
+        Type '{ value: string; label: string; days: number; price?: number | undefined; }[]' is not assignable to type 'ServicePricingInterval[]'.
+          Type '{ value: string; label: string; days: number; price?: number | undefined; }' is not assignable to type 'ServicePricingInterval'.
+            Types of property 'price' are incompatible.
+              Type 'number | undefined' is not assignable to type 'number'.
+                Type 'undefined' is not assignable to type 'number'.
+
+  287 |       partnerId: service.partner_id || null,
+  288 |       price: service.price || null,
+> 289 |       pricingConfig: service.pricing_config || null,
+      |       ^
+  290 |       selectedInterval: selectedInterval,
+  291 |     });
+  292 |     if (added) {

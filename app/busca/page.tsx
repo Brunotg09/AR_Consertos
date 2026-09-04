@@ -2,26 +2,35 @@
 
 import { ServiceCard } from "@/components/ServiceCard";
 import { useServices } from "@/hooks/useServices";
+import { buildSearchUrl } from "@/lib/searchUrl";
 import { ArrowRight, Loader2, Search, X } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 
 function BuscaContent() {
   const searchParams = useSearchParams();
-  const [query, setQuery] = useState(searchParams.get("q") || "");
+  const router = useRouter();
+  const legacyQuery = searchParams.get("q") || "";
+  const [query, setQuery] = useState(legacyQuery);
   const { services, loading } = useServices({ activeOnly: true });
 
   const serviceResults = useMemo(() => {
-    if (!query.trim()) return [];
-    const q = query.toLowerCase();
+    if (!legacyQuery.trim()) return [];
+    const q = legacyQuery.toLowerCase();
     return services.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
         s.description?.toLowerCase().includes(q) ||
         s.category?.toLowerCase().includes(q)
     );
-  }, [query, services]);
+  }, [legacyQuery, services]);
+
+  const handleSearch = () => {
+    if (query.trim()) {
+      router.push(buildSearchUrl(window.location.origin, query));
+    }
+  };
 
   if (loading) {
     return (
@@ -32,7 +41,7 @@ function BuscaContent() {
   }
 
   return (
-    <div className="mx-auto  max-w-full px-4 py-12 sm:px-8 lg:px-20">
+    <div className="mx-auto max-w-full px-4 py-12 sm:px-8 lg:px-20">
       <div className="text-center">
         <h1 className="font-bebas text-3xl tracking-wide text-white sm:text-4xl">
           BUSCAR
@@ -45,17 +54,24 @@ function BuscaContent() {
       {/* Search bar */}
       <div className="mx-auto mt-8 max-w-xl">
         <div className="relative">
-          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: "#888888" }} />
+          <Search
+            className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2"
+            style={{ color: "#888888" }}
+          />
           <input
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             placeholder="Digite o nome de um serviço, produto ou categoria..."
             className="w-full rounded-xl border border-white/10 bg-white/[0.03] py-3 pl-11 pr-10 text-sm text-white placeholder-white/30 outline-none transition-all focus:border-ar-red/50 focus:ring-1 focus:ring-ar-red/20"
           />
           {query && (
             <button
-              onClick={() => setQuery("")}
+              onClick={() => {
+                setQuery("");
+                router.push("/busca");
+              }}
               className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 transition-colors hover:bg-white/[0.04]"
               style={{ color: "#888888" }}
             >
@@ -66,7 +82,7 @@ function BuscaContent() {
       </div>
 
       {/* Results */}
-      {query.trim() ? (
+      {legacyQuery.trim() ? (
         <div className="mt-10">
           <div className="mb-4 flex items-center gap-2">
             <span className="text-xs" style={{ color: "#888888" }}>
@@ -84,7 +100,7 @@ function BuscaContent() {
             <div className="mt-12 text-center">
               <Search className="mx-auto h-10 w-10" style={{ color: "#444" }} />
               <p className="mt-4 text-sm" style={{ color: "#888888" }}>
-                Nenhum resultado encontrado para &quot;{query}&quot;.
+                Nenhum resultado encontrado para &quot;{legacyQuery}&quot;.
               </p>
               <p className="mt-1 text-xs" style={{ color: "#666666" }}>
                 Tente buscar por outro termo ou navegue pelas categorias.
@@ -117,11 +133,13 @@ function BuscaContent() {
 
 export default function BuscaPage() {
   return (
-    <Suspense fallback={
-      <div className="mx-auto  max-w-full px-4 py-12 sm:px-8 lg:px-20 text-center">
-        <p className="text-sm" style={{ color: "#888888" }}>Carregando...</p>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-full px-4 py-12 sm:px-8 lg:px-20 text-center">
+          <p className="text-sm" style={{ color: "#888888" }}>Carregando...</p>
+        </div>
+      }
+    >
       <BuscaContent />
     </Suspense>
   );

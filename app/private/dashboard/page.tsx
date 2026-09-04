@@ -266,7 +266,6 @@ export default function AdminDashboard() {
         .slice(0, 5);
       setRecentOrders(sorted);
     } catch (error) {
-      console.error("Error fetching dashboard data:", error);
     } finally {
       setLoading(false);
     }

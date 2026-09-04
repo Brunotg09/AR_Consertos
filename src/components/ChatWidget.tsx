@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { MessageCircle, X, Send, User, Bot, HeadphonesIcon, Loader2 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/lib/supabase";
+import { Bot, HeadphonesIcon, Loader2, MessageCircle, Send, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface Message {
   id?: string;
@@ -150,10 +150,6 @@ const detectHumanRequest = (message: string) => {
 const MAX_GEMINI_PER_DAY = 5;
 const MAX_BOT_PER_DAY = 15;
 const STORAGE_KEY = "baa2cj2kmcbah2ytsc";
-const XOR_KEY = 0x5A;
-
-const xorEncrypt = (text: string) =>
-  Array.from(text).map((c) => String.fromCharCode(c.charCodeAt(0) ^ XOR_KEY)).join("");
 
 const getDailyCounts = () => {
   const today = new Date().toDateString();
@@ -161,7 +157,7 @@ const getDailyCounts = () => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return empty;
-    const data = JSON.parse(xorEncrypt(raw));
+    const data = JSON.parse(raw);
     if (data.date !== today) return empty;
     return data;
   } catch {
@@ -172,14 +168,14 @@ const getDailyCounts = () => {
 const incrementGeminiCount = () => {
   const data = getDailyCounts();
   const updated = { ...data, gemini: data.gemini + 1 };
-  localStorage.setItem(STORAGE_KEY, xorEncrypt(JSON.stringify(updated)));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   return updated;
 };
 
 const incrementBotCount = () => {
   const data = getDailyCounts();
   const updated = { ...data, bot: data.bot + 1 };
-  localStorage.setItem(STORAGE_KEY, xorEncrypt(JSON.stringify(updated)));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   return updated;
 };
 
@@ -337,7 +333,6 @@ export function ChatWidget() {
         // If nothing found, leave empty — FAQ shows
       }
     } catch (err) {
-      console.error("Error initializing chat session:", err);
     } finally {
       sessionLoadingRef.current = false;
     }
@@ -438,14 +433,12 @@ export function ChatWidget() {
           { session_id: session.id, sender: "bot", content: data.content },
         ]);
         if (error) {
-          console.error("[Chat] Supabase insert error:", error);
           setMessages((prev) => [...prev, { sender: "bot", content: data.content }]);
         }
       } else {
         setMessages((prev) => [...prev, { sender: "bot", content: data.content }]);
       }
     } catch (error) {
-      console.error("[Chat] Error sending message:", error);
       setMessages((prev) => [...prev, { sender: "bot", content: "Desculpe, o serviço de IA está temporariamente indisponível. Entre em contato pelo telefone (79) 99944-6596 ou tente novamente em instantes." }]);
     } finally {
       setLoading(false);
@@ -460,7 +453,6 @@ export function ChatWidget() {
         { session_id: session.id, sender: "user", content },
       ]);
       if (error) {
-        console.error("Supabase insert error:", error);
         setMessages((prev) => [...prev, { sender: "user", content }]);
       }
     } else {
@@ -478,7 +470,6 @@ export function ChatWidget() {
         { session_id: session.id, sender: "bot", content: faq.answer },
       ]);
       if (error) {
-        console.error("Supabase insert error:", error);
         setMessages((prev) => [
           ...prev,
           { sender: "user", content: faq.question },
@@ -518,7 +509,6 @@ export function ChatWidget() {
         .single();
 
       if (error || !newSession) {
-        console.error("[Chat] Error creating session:", error);
         return;
       }
 
@@ -605,7 +595,7 @@ export function ChatWidget() {
       {/* Floating button */}
       <button
         onClick={() => setOpen(!open)}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all duration-300 hover:scale-110"
+        className="fixed bottom-12 right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all duration-300 hover:scale-110"
         style={{
           background: "linear-gradient(135deg, #E30613 0%, #b91c1c 100%)",
           boxShadow: "0 4px 20px rgba(227, 6, 19, 0.4)",

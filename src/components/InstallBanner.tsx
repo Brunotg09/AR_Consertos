@@ -47,10 +47,10 @@ export function InstallBanner() {
 
   return (
     <div
-      className={`fixed bottom-0 left-0 right-0 z-[100] p-3 sm:p-4 ${closing ? 'pwabanner-slide-down' : 'pwabanner-slide-up'}`}
+      className={`fixed bottom-0 left-0 right-0 z-50 pointer-events-none p-3 sm:p-4 ${closing ? 'pwabanner-slide-down' : 'pwabanner-slide-up'}`}
     >
       <div
-        className="mx-auto max-w-lg overflow-hidden rounded-2xl border-2 pwabanner-glow"
+        className="mx-auto max-w-lg overflow-hidden rounded-2xl border-2 pwabanner-glow pointer-events-auto"
         style={{
           background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0a0a0a 100%)',
         }}

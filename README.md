@@ -11,8 +11,8 @@ Sistema completo para oficina de conserto de eletrodomesticos e eletronica inver
 - Cadastro e login de usuarios
 - Historico de pedidos
 - Minha Conta (perfil)
-
-### Area Administrativa (`/private`)
+ 
+### Area Administrativa (`/adminta`)
 - Dashboard com metricas
 - Gestao de pedidos
 - Gestao de estoque
@@ -28,14 +28,6 @@ Sistema completo para oficina de conserto de eletrodomesticos e eletronica inver
 - **Backend:** Supabase (PostgreSQL, Auth, Storage, Realtime)
 - **Deploy:** Vercel
 
-## Como Rodar
-
-```bash
-npm install
-npm run dev
-```
-
-Acesse http://localhost:3000
 
 ## Estrutura
 
@@ -63,15 +55,6 @@ src/
   contexts/        - Contexts (Cart)
 supabase/
   migrations/      - Migrations do banco
-```
-
-## Variaveis de Ambiente
-
-Copie `.env.example` para `.env` e preencha:
-
-```
-NEXT_PUBLIC_SUPABASE_URL=sua_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave
 ```
 
 ## Deploy

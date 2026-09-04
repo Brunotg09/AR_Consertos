@@ -110,12 +110,27 @@ export function Footer() {
         <div className="mx-auto px-4 py-5 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center justify-between gap-3 text-[11px] sm:flex-row" style={{ color: "#666666" }}>
             <span>© 2026 AR Consertos · Todos os direitos reservados</span>
-            <Link
-              href="/politica-de-privacidade"
-              className="hover:text-white hover:underline transition-colors sm:ml-auto"
-            >
-              Política de Privacidade (LGPD)
-            </Link>
+            <div className="flex flex-wrap items-center justify-center gap-3 sm:ml-auto">
+              <button
+                onClick={() => (window as any).openCookieSettings?.()}
+                className="transition-colors hover:text-white hover:underline"
+                style={{ color: "#C9A84C" }}
+              >
+                🍪 Configurar Cookies
+              </button>
+              <Link
+                href="/politica-de-privacidade"
+                className="transition-colors hover:text-white hover:underline"
+              >
+                Política de Privacidade (LGPD)
+              </Link>
+              <Link
+                href="/termos-de-uso"
+                className="transition-colors hover:text-white hover:underline"
+              >
+                Termos de Uso
+              </Link>
+            </div>
           </div>
         </div>
       </div>

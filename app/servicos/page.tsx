@@ -4,26 +4,30 @@ import { useFloatingWidget } from "@/components/FloatingWidget";
 import { ServiceCard } from "@/components/ServiceCard";
 import { useServices } from "@/hooks/useServices";
 import { Filter, Loader2, Wrench } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo } from "react";
 
-export default function ServicosPage() {
+function ServicosContent() {
   const { trigger } = useFloatingWidget();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const categoriaAtiva = searchParams.get("categoria") || "Todas";
+
   const { services, loading } = useServices({
     activeOnly: true,
     type: "convencional",
   });
+
   const categorias = useMemo(
     () => Array.from(new Set(services.map((s) => s.category))),
     [services],
   );
-  const [categoriaAtiva, setCategoriaAtiva] = useState<string>("Todas");
 
   useEffect(() => { trigger("schedule"); }, [trigger]);
 
-  // Dynamic SEO metadata
   useEffect(() => {
     document.title = "Serviços de Conserto | A.R Conserto - Garantia 90 Dias";
-    
+
     const metaDesc = "Catálogo completo de serviços de conserto de eletrodomésticos em Itabaiana/SE. Máquinas de lavar, geladeiras, micro-ondas e mais. Garantia de 90 dias.";
     let metaTag = document.querySelector('meta[name="description"]');
     if (!metaTag) {
@@ -43,6 +47,14 @@ export default function ServicosPage() {
     canonicalTag.setAttribute("href", canonicalUrl);
   }, []);
 
+  const handleCategoryChange = (cat: string) => {
+    if (cat === "Todas") {
+      router.push("/servicos");
+    } else {
+      router.push(`/servicos?categoria=${encodeURIComponent(cat)}`);
+    }
+  };
+
   const filtrados =
     categoriaAtiva === "Todas"
       ? services
@@ -58,12 +70,11 @@ export default function ServicosPage() {
 
   return (
     <div className="pb-10">
-      {/* Hero inverter */}
       <section
         className="border-b border-white/5"
         style={{ backgroundColor: "#161616" }}
       >
-        <div className="mx-auto max-w-full px-4 py-12 sm:px-8 lg:px-20 flex flex-col items-center text-center">
+        <div className="mx-auto max-w-full px-4 py-16 sm:px-8 lg:px-20 flex flex-col items-center text-center">
           <div className="flex flex-col items-center text-center gap-3">
             <div
               className="flex h-16 w-16 items-center justify-center rounded-full"
@@ -85,7 +96,6 @@ export default function ServicosPage() {
             90 dias
           </p>
 
-          {/* Filtros */}
           <div className="mt-6 flex flex-wrap items-center gap-2">
             <div
               className="flex items-center gap-1.5 text-xs"
@@ -95,7 +105,7 @@ export default function ServicosPage() {
               <span>Filtrar:</span>
             </div>
             <button
-              onClick={() => setCategoriaAtiva("Todas")}
+              onClick={() => handleCategoryChange("Todas")}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                 categoriaAtiva === "Todas"
                   ? "text-white"
@@ -112,7 +122,7 @@ export default function ServicosPage() {
             {categorias.map((cat) => (
               <button
                 key={cat}
-                onClick={() => setCategoriaAtiva(cat)}
+                onClick={() => handleCategoryChange(cat)}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   categoriaAtiva === cat
                     ? "text-white"
@@ -130,20 +140,31 @@ export default function ServicosPage() {
           </div>
         </div>
       </section>
-      {/* Grid */}
-      <div className="mx-auto  max-w-full px-4 py-12 sm:px-8 lg:px-20">
-      <div className="mt-8 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        {filtrados.map((service) => (
-          <ServiceCard key={service.id} service={service} />
-        ))}
-      </div>
-
-      {filtrados.length === 0 && (
-        <div className="mt-12 text-center text-sm" style={{ color: "#888888" }}>
-          Nenhum serviço encontrado nesta categoria.
+      <div className="mx-auto max-w-full px-4 py-12 sm:px-8 lg:px-20">
+        <div className="mt-8 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+          {filtrados.map((service) => (
+            <ServiceCard key={service.id} service={service} />
+          ))}
         </div>
-      )}
+
+        {filtrados.length === 0 && (
+          <div className="mt-12 text-center text-sm" style={{ color: "#888888" }}>
+            Nenhum serviço encontrado nesta categoria.
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+export default function ServicosPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-white/50" />
+      </div>
+    }>
+      <ServicosContent />
+    </Suspense>
   );
 }

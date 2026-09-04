@@ -27,6 +27,7 @@ import {
   Camera,
   Upload,
   ImagePlus,
+  Building2,
 } from "lucide-react";
 import { supabase, withTimeout } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -107,6 +108,7 @@ interface OrderItem {
   product_category: string | null;
   product_condition: string | null;
   product_images: string[] | null;
+  partner_id?: string | null;
   teste_equipamento_ligado?: boolean;
   teste_funcao_principal?: boolean;
   teste_funcoes_secundarias?: boolean;
@@ -135,17 +137,30 @@ interface Order {
   updated_at: string;
   cliente?: Cliente;
   items?: OrderItem[];
+  service_orders?: ServiceOrder[];
+}
+
+interface ServiceOrder {
+  id: string;
+  order_id: string | null;
+  subscription_id: string | null;
+  partner_id: string;
+  client_name: string;
+  address: string;
+  scheduled_date: string;
+  status: string;
+  partner?: { name: string };
+  total: number;
+  commission_value: number;
+  partner_value: number;
+  payment_method: string | null;
+  payment_status: string;
+  amount_paid: number;
+  payments: { date: string; amount: number; method: string; note?: string }[];
 }
 
 // WhatsApp notification simulator
 function sendWhatsAppNotification(phone: string | null, message: string) {
-  const timestamp = new Date().toISOString();
-  console.log("=".repeat(60));
-  console.log(`[WhatsApp Simulation] ${timestamp}`);
-  console.log(`To: ${phone || "N/A"}`);
-  console.log(`Message: ${message}`);
-  console.log("=".repeat(60));
-
   toast.success("Notificação WhatsApp simulada", {
     description: `Mensagem seria enviada para ${phone || "cliente"}`,
   });
@@ -165,6 +180,10 @@ export default function PedidosPage() {
   const [deleteOrderDialogOpen, setDeleteOrderDialogOpen] = useState(false);
   const [deleteItemDialogOpen, setDeleteItemDialogOpen] = useState(false);
   const [completeServiceDialogOpen, setCompleteServiceDialogOpen] = useState(false);
+  const [assignPartnerDialogOpen, setAssignPartnerDialogOpen] = useState(false);
+  const [soPaymentDialogOpen, setSOPaymentDialogOpen] = useState(false);
+  const [selectedSO, setSelectedSO] = useState<ServiceOrder | null>(null);
+  const [soPaymentForm, setSOPaymentForm] = useState({ amount: "", method: "dinheiro" as "dinheiro" | "pix" | "cartao", note: "" });
 
   // Selected items
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -244,6 +263,11 @@ export default function PedidosPage() {
     horaEntrega: "",
   });
 
+  // Partner assignment state
+  const [partners, setPartners] = useState<{ id: string; name: string }[]>([]);
+  const [selectedPartnerId, setSelectedPartnerId] = useState("");
+  const [assigningPartner, setAssigningPartner] = useState(false);
+
   const fetchOrders = useCallback(async () => {
     try {
       const { data: ordersData, error } = await supabase
@@ -254,27 +278,36 @@ export default function PedidosPage() {
         `)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       const orderIds = (ordersData || []).map((o) => o.id);
 
       let allItems: OrderItem[] = [];
+      let allServiceOrders: ServiceOrder[] = [];
       if (orderIds.length > 0) {
         const { data: itemsData } = await supabase
           .from("order_items")
           .select("*")
           .in("order_id", orderIds);
         allItems = itemsData || [];
+
+        const { data: soData } = await supabase
+          .from("service_orders")
+          .select("*, partner:partners(name)")
+          .in("order_id", orderIds);
+        allServiceOrders = soData || [];
       }
 
       const ordersWithItems = (ordersData || []).map((order) => ({
         ...order,
         items: allItems.filter((item) => item.order_id === order.id),
+        service_orders: allServiceOrders.filter((so) => so.order_id === order.id),
       }));
 
       setOrders(ordersWithItems);
     } catch (error) {
-      console.error("Error fetching orders:", error);
       toast.error("Erro ao carregar pedidos");
     } finally {
       setLoading(false);
@@ -329,12 +362,30 @@ export default function PedidosPage() {
     }
   }, []);
 
+  const fetchPartners = useCallback(async () => {
+    try {
+      const { data } = await withTimeout(
+        () => supabase
+          .from("partners")
+          .select("id, name")
+          .eq("active", true)
+          .order("name"),
+        8000,
+        { data: null, error: null }
+      );
+      setPartners(data || []);
+    } catch {
+      setPartners([]);
+    }
+  }, []);
+
   useEffect(() => {
     fetchOrders();
     fetchClientes();
     fetchProductos();
     fetchProfiles();
-  }, [fetchOrders, fetchClientes, fetchProductos, fetchProfiles]);
+    fetchPartners();
+  }, [fetchOrders, fetchClientes, fetchProductos, fetchProfiles, fetchPartners]);
 
   // Filtered lists
   const filteredOrders = orders.filter((order) => {
@@ -505,7 +556,6 @@ export default function PedidosPage() {
       toast.success(`Status atualizado para ${getStatusLabel(newStatus)}`);
       fetchOrders();
     } catch (error) {
-      console.error("Error updating status:", error);
       toast.error("Erro ao atualizar status");
     }
   };
@@ -566,7 +616,6 @@ export default function PedidosPage() {
       toast.success(`Item atualizado para ${getStatusLabel(newStatus)}`);
       fetchOrders();
     } catch (error) {
-      console.error("Error updating item status:", error);
       toast.error("Erro ao atualizar status do item");
     }
   };
@@ -766,7 +815,6 @@ export default function PedidosPage() {
       resetNewOrderForm();
       fetchOrders();
     } catch (error) {
-      console.error("Error creating order:", error);
       toast.error("Erro ao criar pedido");
     } finally {
       setSaving(false);
@@ -845,7 +893,6 @@ export default function PedidosPage() {
       setPaymentDialogOpen(false);
       fetchOrders();
     } catch (error) {
-      console.error("Error adding payment:", error);
       toast.error("Erro ao registrar pagamento");
     }
   };
@@ -953,7 +1000,6 @@ export default function PedidosPage() {
       setCompleteServiceDialogOpen(false);
       fetchOrders();
     } catch (error) {
-      console.error("Error saving service details:", error);
       toast.error("Erro ao salvar dados");
     }
   };
@@ -1018,7 +1064,6 @@ export default function PedidosPage() {
       setCompleteServiceDialogOpen(false);
       fetchOrders();
     } catch (error) {
-      console.error("Error completing service:", error);
       toast.error("Erro ao concluir serviço");
     }
   };
@@ -1054,7 +1099,6 @@ export default function PedidosPage() {
         toast.success("Foto adicionada");
       }
     } catch (error) {
-      console.error("Error uploading photo:", error);
       toast.error("Erro ao enviar foto");
     } finally {
       setUploadingPhoto(false);
@@ -1097,8 +1141,56 @@ export default function PedidosPage() {
       setDeleteOrderDialogOpen(false);
       fetchOrders();
     } catch (error) {
-      console.error("Error deleting order:", error);
       toast.error("Erro ao remover pedido");
+    }
+  };
+
+  // Partner assignment
+  const openAssignPartnerDialog = (order: Order) => {
+    setSelectedOrder(order);
+    setSelectedPartnerId("");
+    setAssignPartnerDialogOpen(true);
+  };
+
+  const handleAssignPartner = async () => {
+    if (!selectedOrder || !selectedPartnerId) {
+      toast.error("Selecione um parceiro.");
+      return;
+    }
+
+    setAssigningPartner(true);
+
+    try {
+      const serviceItem = (selectedOrder.items || []).find(
+        (i) => i.item_type === "servico" && !i.completed_at
+      );
+
+      if (!serviceItem) {
+        toast.error("Nenhum serviço pendente encontrado neste pedido.");
+        setAssigningPartner(false);
+        return;
+      }
+
+      const { data, error } = await supabase.rpc("create_service_order", {
+        p_order_id: selectedOrder.id,
+        p_partner_id: selectedPartnerId,
+        p_client_name: selectedOrder.cliente?.nome || "Cliente",
+        p_client_cpf: selectedOrder.cliente?.cpf || null,
+        p_client_phone: selectedOrder.cliente?.telefone || null,
+        p_address: formatAddress(selectedOrder.cliente?.endereco) || null,
+        p_scheduled_date: serviceItem.scheduled_date || null,
+      });
+
+      if (error) throw error;
+
+      toast.success("Parceiro atribuído com sucesso! OS de campo criada.");
+      setAssignPartnerDialogOpen(false);
+      setSelectedPartnerId("");
+      fetchOrders();
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao atribuir parceiro.");
+    } finally {
+      setAssigningPartner(false);
     }
   };
 
@@ -1109,6 +1201,35 @@ export default function PedidosPage() {
     const parts = [a.rua, a.numero, a.bairro, a.cidade, a.estado].filter(Boolean);
     const cep = a.cep ? `CEP: ${a.cep}` : null;
     return [...parts, cep].filter(Boolean).join(", ") || null;
+  };
+
+  const openSOPaymentDialog = (so: ServiceOrder) => {
+    setSelectedSO(so);
+    const remaining = (Number(so.total) || 0) - (Number(so.amount_paid) || 0);
+    setSOPaymentForm({ amount: remaining > 0 ? remaining.toFixed(2) : "", method: "dinheiro", note: "" });
+    setSOPaymentDialogOpen(true);
+  };
+
+  const handleSOPayment = async () => {
+    if (!selectedSO) return;
+    const amount = parseFloat(soPaymentForm.amount);
+    if (!amount || amount <= 0) { toast.error("Informe um valor válido."); return; }
+
+    try {
+      const { error } = await supabase.rpc("register_so_payment", {
+        p_service_order_id: selectedSO.id,
+        p_amount: amount,
+        p_method: soPaymentForm.method,
+        p_note: soPaymentForm.note || null,
+      });
+      if (error) throw error;
+      toast.success("Pagamento registrado com sucesso!");
+      setSOPaymentDialogOpen(false);
+      setSelectedSO(null);
+      fetchOrders();
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao registrar pagamento.");
+    }
   };
 
   const handlePrintOS = (order: Order) => {
@@ -1442,6 +1563,17 @@ export default function PedidosPage() {
 
                               <div className="flex items-center gap-2 flex-wrap">
                                 {/* Item Status */}
+                                {item.partner_id ? (
+                                  <span
+                                    className="inline-flex h-6 min-w-[90px] items-center justify-center rounded-full px-2 text-[10px] font-bold"
+                                    style={{
+                                      backgroundColor: `${getStatusColor(item.status || "pendente").split(" ")[0].replace("bg-", "").replace("/20", "")}20`,
+                                      color: getStatusColor(item.status || "pendente").split(" ")[1].replace("text-", ""),
+                                    }}
+                                  >
+                                    {item.status || "pendente"} — Parceiro
+                                  </span>
+                                ) : (
                                 <Select
                                   value={item.status || "pendente"}
                                   onValueChange={(value) => updateItemStatus(item, value)}
@@ -1467,6 +1599,7 @@ export default function PedidosPage() {
                                     <SelectItem value="cancelado" className="text-white text-xs text-red-400">Cancelado</SelectItem>
                                   </SelectContent>
                                 </Select>
+                                )}
 
                                 {/* Payment Status */}
                                 <>
@@ -1577,6 +1710,74 @@ export default function PedidosPage() {
                       })}
                     </div>
 
+                    {/* Service Orders (Parceiros) — Somente Leitura */}
+                    {order.service_orders && order.service_orders.length > 0 && (
+                      <div className="mt-3 space-y-2 border-t border-white/[0.04] pt-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">O.S. Parceiro (referência)</p>
+                        {order.service_orders.map((so) => (
+                          <div
+                            key={so.id}
+                            className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <Building2 className="h-4 w-4 text-[#8B5CF6]" />
+                                <div>
+                                  <span className="text-xs font-medium text-white">{so.partner?.name || "Parceiro"}</span>
+                                  <p className="text-[10px] text-white/40">{so.address}</p>
+                                  <p className="text-[10px] text-white/40">
+                                    {so.scheduled_date ? format(new Date(so.scheduled_date), "dd/MM/yyyy") : "Sem data"}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {Number(so.total) > 0 && (
+                                  <div className="text-right">
+                                    <p className="text-xs font-bold text-white">{formatCurrency(Number(so.total))}</p>
+                                    <p className="text-[10px] text-[#C9A84C]">Comissão: {formatCurrency(Number(so.commission_value))}</p>
+                                  </div>
+                                )}
+                                <span
+                                  className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+                                  style={{
+                                    backgroundColor: so.status === "completed" ? "#22c55e20" : so.status === "cancelled" ? "#E3061320" : "#EAB30820",
+                                    color: so.status === "completed" ? "#22c55e" : so.status === "cancelled" ? "#E30613" : "#EAB308",
+                                  }}
+                                >
+                                  {so.status === "pending" ? "Pendente" : so.status === "in_progress" ? "Em Andamento" : so.status === "completed" ? "Concluído" : so.status === "cancelled" ? "Cancelado" : so.status}
+                                </span>
+                              </div>
+                            </div>
+                            {/* Payment Status for completed OS */}
+                            {so.status === "completed" && Number(so.total) > 0 && (
+                              <div className="mt-2 flex items-center justify-between border-t border-white/[0.04] pt-2">
+                                <div className="flex items-center gap-2">
+                                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                    so.payment_status === "pago" ? "bg-[#22c55e]/10 text-[#22c55e]" :
+                                    so.payment_status === "pago_parcial" ? "bg-[#3B82F6]/10 text-[#3B82F6]" :
+                                    "bg-[#F59E0B]/10 text-[#F59E0B]"
+                                  }`}>
+                                    {so.payment_status === "pago" ? "Pago" : so.payment_status === "pago_parcial" ? "Parcial" : "Pendente"}
+                                  </span>
+                                  {Number(so.amount_paid) > 0 && (
+                                    <span className="text-[10px] text-white/40">Pago: {formatCurrency(Number(so.amount_paid))}</span>
+                                  )}
+                                </div>
+                                {so.payment_status !== "pago" && (
+                                  <button
+                                    onClick={() => openSOPaymentDialog(so)}
+                                    className="flex items-center gap-1 rounded-lg bg-[#C9A84C]/10 px-2 py-1 text-[10px] text-[#C9A84C] hover:bg-[#C9A84C]/20"
+                                  >
+                                    <DollarSign className="h-3 w-3" /> Registrar Pgto
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Order Actions */}
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] pt-4">
                       <div className="flex flex-wrap gap-2">
@@ -1604,6 +1805,13 @@ export default function PedidosPage() {
 
                       <div className="flex gap-2">
                         <button
+                          onClick={() => openAssignPartnerDialog(order)}
+                          className="flex items-center gap-1 rounded-lg bg-[#8B5CF6]/10 px-3 py-2 text-sm text-[#8B5CF6] hover:bg-[#8B5CF6]/20"
+                        >
+                          <Building2 className="h-4 w-4" />
+                          <span className="hidden sm:inline">Atribuir Parceiro</span>
+                        </button>
+                        <button
                           onClick={() => handlePrintOS(order)}
                           className="flex items-center gap-1 rounded-lg bg-green-500/10 px-3 py-2 text-sm text-green-400 hover:bg-green-500/20"
                         >
@@ -1626,6 +1834,106 @@ export default function PedidosPage() {
           })
         )}
       </div>
+
+      {/* Assign Partner Dialog */}
+      <Dialog open={assignPartnerDialogOpen} onOpenChange={setAssignPartnerDialogOpen}>
+        <DialogContent className="max-w-md border-white/[0.06] bg-[#0f0f0f]">
+          <DialogHeader>
+            <DialogTitle className="text-white">Atribuir Parceiro</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <p className="text-sm text-white/60">
+              Selecione a empresa parceira responsável por este atendimento.
+              Uma OS de campo será criada automaticamente.
+            </p>
+
+            <div className="space-y-2">
+              <Label className="text-white/70">Empresa Parceira *</Label>
+              <select
+                value={selectedPartnerId}
+                onChange={(e) => setSelectedPartnerId(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white outline-none"
+              >
+                <option value="">Selecione o parceiro</option>
+                {partners.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {partners.length === 0 && (
+              <div className="rounded-lg bg-[#F59E0B]/10 p-3 text-sm text-[#F59E0B]">
+                Nenhum parceiro ativo encontrado. Cadastre um parceiro primeiro em{" "}
+                <a href="/private/parceiros" className="underline">
+                  /private/parceiros
+                </a>.
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setAssignPartnerDialogOpen(false)}
+              className="text-white/60 hover:text-white"
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleAssignPartner}
+              disabled={assigningPartner || !selectedPartnerId}
+              className="bg-[#8B5CF6] hover:bg-[#8B5CF6]/90"
+            >
+              {assigningPartner ? "Atribuindo..." : "Atribuir e Criar OS"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* SO Payment Dialog */}
+      <Dialog open={soPaymentDialogOpen} onOpenChange={setSOPaymentDialogOpen}>
+        <DialogContent className="max-w-md border-white/[0.06] bg-[#0f0f0f]">
+          <DialogHeader>
+            <DialogTitle className="text-white">Registrar Pagamento - OS</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {selectedSO && (
+              <div className="rounded-lg bg-white/[0.02] p-3 text-sm">
+                <p className="text-white/70">Cliente: <span className="font-medium text-white">{selectedSO.client_name}</span></p>
+                <p className="text-white/70">Total: <span className="font-medium text-white">{formatCurrency(Number(selectedSO.total) || 0)}</span></p>
+                <p className="text-white/70">Pago: <span className="font-medium text-[#22c55e]">{formatCurrency(Number(selectedSO.amount_paid) || 0)}</span></p>
+                <p className="text-white/70">Restante: <span className="font-medium text-[#F59E0B]">{formatCurrency((Number(selectedSO.total) || 0) - (Number(selectedSO.amount_paid) || 0))}</span></p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label className="text-white/70">Valor (R$) *</Label>
+              <Input type="number" step="0.01" min="0" value={soPaymentForm.amount} onChange={(e) => setSOPaymentForm({ ...soPaymentForm, amount: e.target.value })} className="border-white/10 bg-[#1a1a1a] text-white" />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-white/70">Método *</Label>
+              <div className="flex gap-2">
+                {[{ value: "dinheiro", label: "Dinheiro", icon: Banknote }, { value: "pix", label: "PIX", icon: QrCode }, { value: "cartao", label: "Cartão", icon: CreditCard }].map((opt) => (
+                  <button key={opt.value} type="button" onClick={() => setSOPaymentForm({ ...soPaymentForm, method: opt.value as any })}
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all ${soPaymentForm.method === opt.value ? "border-[#C9A84C] bg-[#C9A84C]/10 text-[#C9A84C]" : "border-white/10 bg-white/[0.02] text-white/50 hover:text-white/70"}`}>
+                    <opt.icon className="h-3.5 w-3.5" /> {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-white/70">Observação</Label>
+              <Input value={soPaymentForm.note} onChange={(e) => setSOPaymentForm({ ...soPaymentForm, note: e.target.value })} placeholder="Ex: Pagamento referente à visita..." className="border-white/10 bg-[#1a1a1a] text-white" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSOPaymentDialogOpen(false)} className="text-white/60 hover:text-white">Cancelar</Button>
+            <Button onClick={handleSOPayment} className="bg-[#C9A84C] hover:bg-[#C9A84C]/90 text-black">Registrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* New Order Dialog */}
       <Dialog open={newOrderDialogOpen} onOpenChange={setNewOrderDialogOpen}>

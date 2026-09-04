@@ -8,15 +8,17 @@ import { categoryDisplayNames, toSlug } from "@/lib/slugify";
 import {
   ArrowLeft,
   Award,
+  Building2,
   CalendarCheck,
   ChevronLeft,
   ChevronRight,
   Clock,
-  DollarSign,
   FileText,
+  RefreshCw,
   Star,
   Tag,
   Wrench,
+  Zap,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -37,6 +39,12 @@ interface ServiceData {
   icon_name: string;
   images: string[];
   active: boolean;
+  partner_id?: string | null;
+  partner_name?: string | null;
+  pricing_config?: {
+    model?: "avulso" | "assinatura" | "ambos";
+    intervals?: { value: string; label: string; days: number; price?: number }[];
+  } | null;
 }
 
 const serviceTypeLabels: Record<string, string> = {
@@ -56,6 +64,7 @@ export default function ServicoDetailPage() {
   const [loading, setLoading] = useState(true);
   const [currentImage, setCurrentImage] = useState(0);
   const [imgError, setImgError] = useState(false);
+  const [selectedInterval, setSelectedInterval] = useState<string | null>(null);
 
   useEffect(() => {
     trigger("schedule");
@@ -167,19 +176,41 @@ export default function ServicoDetailPage() {
       }
 
       if (error) {
-        console.error("[servico] fetchService error:", error);
         setService(null);
       } else {
         setService(data as ServiceData | null);
         setImgError(false);
       }
     } catch (e) {
-      console.error("[servico] fetchService error:", e);
       setService(null);
     } finally {
       setLoading(false);
     }
   }, [slugKey]);
+
+  // Also try partner_services table
+  useEffect(() => {
+    if (!service && !loading && slug && slug.length > 0) {
+      const fetchPartnerService = async () => {
+        const serviceId = slug[slug.length - 1];
+        const { data } = await supabase
+          .from("partner_services")
+          .select("*, partners:partner_id(name)")
+          .eq("service_id", serviceId)
+          .eq("active", true)
+          .single();
+        if (data) {
+          setService({
+            ...data,
+            partner_id: data.partner_id,
+            partner_name: data.partners?.name || null,
+          } as ServiceData);
+          setImgError(false);
+        }
+      };
+      fetchPartnerService();
+    }
+  }, [service, loading, slug]);
 
   useEffect(() => {
     fetchService();
@@ -251,6 +282,10 @@ export default function ServicoDetailPage() {
       totalImages: service.images?.length || 1,
       iconName: service.icon_name,
       discountPercentage: service.discount_percentage,
+      partnerId: service.partner_id || null,
+      price: service.price || null,
+      pricingConfig: service.pricing_config || null,
+      selectedInterval: selectedInterval,
     });
     if (added) {
       toast.success(`${service.name} adicionado ao orçamento!`);
@@ -294,18 +329,28 @@ export default function ServicoDetailPage() {
   }
 
   const isInverter = service.type === "inverter";
-  const accent = isInverter ? "#8B5CF6" : "#E30613";
+  const isPartner = !!service.partner_id;
+  const accent = isPartner ? "#10B981" : isInverter ? "#8B5CF6" : "#E30613";
   const images = service.images && service.images.length > 0 ? service.images : [];
 
   const hasDiscount = service.discount_percentage > 0;
-  const finalPrice = service.price
-    ? hasDiscount
-      ? Number(service.price) * (1 - service.discount_percentage / 100)
-      : Number(service.price)
-    : null;
+  const hasPricing = !!service.pricing_config?.intervals?.length;
 
-  const formattedPrice = finalPrice
-    ? finalPrice.toLocaleString("pt-BR", {
+  const effectivePrice = (() => {
+    if (selectedInterval && service.pricing_config?.intervals) {
+      const interval = service.pricing_config.intervals.find((i) => i.value === selectedInterval);
+      if (interval?.price) return Number(interval.price);
+    }
+    if (service.price) {
+      return hasDiscount
+        ? Number(service.price) * (1 - service.discount_percentage / 100)
+        : Number(service.price);
+    }
+    return null;
+  })();
+
+  const formattedPrice = effectivePrice
+    ? effectivePrice.toLocaleString("pt-BR", {
         style: "currency",
         currency: "BRL",
       })
@@ -347,10 +392,10 @@ export default function ServicoDetailPage() {
               "@type": "City",
               name: "Itabaiana",
             },
-            offers: finalPrice
+            offers: effectivePrice
               ? {
                   "@type": "Offer",
-                  price: finalPrice,
+                  price: effectivePrice,
                   priceCurrency: "BRL",
                   availability: "https://schema.org/InStock",
                 }
@@ -365,18 +410,22 @@ export default function ServicoDetailPage() {
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-xs" style={{ color: "#666666" }}>
           <Link
-            href={isInverter ? "/inverter" : "/servicos"}
+            href={isPartner ? "/servicos-parceiros" : isInverter ? "/inverter" : "/servicos"}
             className="transition-colors hover:text-white"
           >
-            {serviceTypeLabels[service.type]}
+            {isPartner ? "Serviços Parceiros" : serviceTypeLabels[service.type]}
           </Link>
-          <span style={{ color: "#444444" }}>/</span>
-          <Link
-            href={`/servicos`}
-            className="transition-colors hover:text-white"
-          >
-            {catDisplayName}
-          </Link>
+          {catDisplayName && (
+            <>
+              <span style={{ color: "#444444" }}>/</span>
+              <Link
+                href={isPartner ? "/servicos-parceiros" : "/servicos"}
+                className="transition-colors hover:text-white"
+              >
+                {catDisplayName}
+              </Link>
+            </>
+          )}
           <span style={{ color: "#444444" }}>/</span>
           <span className="text-white">{service.name}</span>
         </nav>
@@ -422,7 +471,7 @@ export default function ServicoDetailPage() {
               )}
 
               {/* Type badge */}
-              <div className="absolute left-4 top-4">
+              <div className="absolute left-4 top-4 flex gap-2">
                 <span
                   className="rounded-full px-2.5 py-1 font-oswald text-[10px] font-bold uppercase tracking-wider"
                   style={{
@@ -434,6 +483,18 @@ export default function ServicoDetailPage() {
                 >
                   {isInverter ? "INVERTER" : "CONVENCIONAL"}
                 </span>
+                {isPartner && (
+                  <span
+                    className="flex items-center gap-1 rounded-full px-2.5 py-1 font-oswald text-[10px] font-bold uppercase tracking-wider"
+                    style={{
+                      backgroundColor: "rgba(16, 185, 129, 0.15)",
+                      color: "#10B981",
+                    }}
+                  >
+                    <Building2 className="h-3 w-3" />
+                    PARCEIRO
+                  </span>
+                )}
               </div>
             </div>
 
@@ -488,12 +549,23 @@ export default function ServicoDetailPage() {
           {/* Informações do Serviço */}
           <div className="space-y-6">
             {/* Category */}
-            <span
-              className="inline-block rounded-full px-3 py-1 font-oswald text-[10px] tracking-widest uppercase"
-              style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}
-            >
-              {service.category}
-            </span>
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block rounded-full px-3 py-1 font-oswald text-[10px] tracking-widest uppercase"
+                style={{ backgroundColor: "rgba(201,168,76,0.15)", color: "#C9A84C" }}
+              >
+                {service.category}
+              </span>
+              {service.partner_name && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full px-3 py-1 font-oswald text-[10px] tracking-widest uppercase"
+                  style={{ backgroundColor: "rgba(16,185,129,0.15)", color: "#10B981" }}
+                >
+                  <Building2 className="h-3 w-3" />
+                  {service.partner_name}
+                </span>
+              )}
+            </div>
 
             {/* Name */}
             <h1 className="font-bebas text-3xl tracking-wide text-white sm:text-4xl lg:text-5xl">
@@ -571,6 +643,66 @@ export default function ServicoDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Plan selector — só aparece se tem pricing_config com intervals */}
+            {hasPricing && service.pricing_config?.intervals && service.pricing_config.intervals.length > 0 && (
+              <div className="space-y-3 rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="h-4 w-4 text-blue-400" />
+                  <span className="text-sm font-bold text-blue-400">
+                    {service.pricing_config.model === "assinatura" ? "Assinatura" : "Escolha um plano"}
+                  </span>
+                </div>
+                <p className="text-xs leading-relaxed text-white/50">
+                  {service.pricing_config.model === "ambos"
+                    ? "Contrate via plano recorrente ou pague por atendimento."
+                    : "Contrate via plano e tenha visitas recorrentes programadas."}
+                </p>
+                <div className="flex flex-col gap-2">
+                  {service.pricing_config.model === "ambos" && (
+                    <button
+                      onClick={() => setSelectedInterval(null)}
+                      className="flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium border transition-all"
+                      style={{
+                        borderColor: !selectedInterval ? accent : "rgba(255,255,255,0.1)",
+                        backgroundColor: !selectedInterval ? `${accent}15` : "rgba(255,255,255,0.02)",
+                        color: !selectedInterval ? accent : "#aaa",
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Zap className="h-4 w-4" />
+                        Avulso
+                      </span>
+                      <span style={{ color: !selectedInterval ? accent : "#888" }}>
+                        R$ {Number(service.price).toFixed(2).replace(".", ",")}
+                      </span>
+                    </button>
+                  )}
+                  {service.pricing_config.intervals.map((interval) => (
+                    <button
+                      key={interval.value}
+                      onClick={() => setSelectedInterval(interval.value)}
+                      className="flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium border transition-all"
+                      style={{
+                        borderColor: selectedInterval === interval.value ? "#3B82F6" : "rgba(255,255,255,0.1)",
+                        backgroundColor: selectedInterval === interval.value ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.02)",
+                        color: selectedInterval === interval.value ? "#60A5FA" : "#aaa",
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <RefreshCw className="h-4 w-4" />
+                        {interval.label}
+                      </span>
+                      {interval.price ? (
+                        <span style={{ color: selectedInterval === interval.value ? "#60A5FA" : "#888" }}>
+                          R$ {Number(interval.price).toFixed(2).replace(".", ",")}
+                        </span>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* CTA Button */}
             <div className="pt-2">

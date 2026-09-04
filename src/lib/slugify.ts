@@ -22,9 +22,21 @@ export function categoryToSlug(category: string): string {
  * Format: /servico/{category}/{service_id}
  */
 export function serviceUrl(category: string, _name: string, _description?: string, serviceId?: string): string {
-  const catSlug = categoryToSlug(category);
+  const catSlug = categoryToSlug(category) || "";
   const sid = serviceId || toSlug(_name);
-  return `/servico/${catSlug}/${sid}`;
+  if (catSlug && catSlug !== "servico") {
+    return `/servico/${catSlug}/${sid}`;
+  }
+  return `/servico/${sid}`;
+}
+
+/**
+ * Generate full product URL with SEO slug
+ * Format: /produto/{id}/{name-slug}
+ */
+export function productUrl(id: number | string, name: string): string {
+  const slug = toSlug(name);
+  return `/produto/${id}/${slug}`;
 }
 
 /**

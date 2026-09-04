@@ -94,7 +94,12 @@ Também é possível solicitar a exclusão completa da sua conta e dados diretam
   {
     number: 7,
     title: "COOKIES",
-    content: `Nosso site utiliza apenas cookies essenciais para o funcionamento da autenticação e do carrinho de compras. Não utilizamos cookies de rastreamento publicitário ou de terceiros para fins de marketing.`,
+    content: `Nosso site utiliza um banner de gerenciamento de cookies que permite ao usuário escolher quais tipos de cookies deseja aceitar:
+
+- Cookies Essenciais: sempre ativos, necessários para o funcionamento do site (sessão, autenticação, carrinho de compras).
+- Cookies de Analytics: opcionais, utilizados para estatísticas de uso e melhoria da experiência de navegação.
+
+O consentimento é salvo localmente no navegador e pode ser alterado a qualquer momento através do link "Configurar Cookies" no rodapé do site.`,
   },
   {
     number: 8,

@@ -3,9 +3,12 @@
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useServices } from "@/hooks/useServices";
+import { buildSearchUrl } from "@/lib/searchUrl";
+import { serviceUrl } from "@/lib/slugify";
 import {
   Award,
   Banknote,
+  Building2,
   Cpu,
   CreditCard,
   History,
@@ -22,6 +25,7 @@ import {
   ShoppingCart,
   Tag,
   User,
+  Users,
   Wrench,
   X,
 } from "lucide-react";
@@ -33,6 +37,7 @@ const publicNavLinks = [
   { href: "/", label: "Início", icon: Home },
   { href: "/servicos", label: "Serviços Gerais", icon: Wrench },
   { href: "/inverter", label: "Eletrônica Inverter", icon: Cpu },
+  { href: "/servicos-parceiros", label: "Serviços Parceiros", icon: Users },
   { href: "/produtos", label: "Produtos", icon: ShoppingBag },
   { href: "#", label: "Promoções", icon: Tag },
   { href: "/contato", label: "Contato", icon: Mail },
@@ -49,7 +54,7 @@ export function Header() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [mounted, setMounted] = useState(false);
-  const { user, isAdmin, signOut } = useAuth();
+  const { user, isAdmin, userRole, partnerId, signOut } = useAuth();
   const { totalItems } = useCart();
 
   useEffect(() => {
@@ -259,6 +264,7 @@ export function Header() {
             <a
               href="tel:+5579999446596"
               className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] transition-all duration-200 hover:scale-105 sm:text-[10px] md:text-xs"
+              target="_blank"
               style={{
                 backgroundColor: "rgba(227, 6, 19, 0.08)",
                 border: "1px solid rgba(227, 6, 19, 0.15)",
@@ -270,7 +276,10 @@ export function Header() {
             </a>
 
             {/* Instagram - chip roxo */}
-            <div
+            
+            <a
+            href="https://instagram.com/A.RCONSERTOS"
+            target="_blank"
               className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] sm:text-[10px] md:text-xs"
               style={{
                 backgroundColor: "rgba(139, 92, 246, 0.08)",
@@ -280,7 +289,7 @@ export function Header() {
             >
               <Instagram className="h-3 w-3" />
               <span>@A.RCONSERTOS</span>
-            </div>
+            </a>
 
             {/* Pagamento - chip neutro */}
             <div
@@ -390,6 +399,18 @@ export function Header() {
                         </Link>
                       </li>
                     )}
+                    {partnerId && (
+                      <li>
+                        <Link
+                          href={`/parceiro/${partnerId}`}
+                          onClick={() => setDrawerOpen(false)}
+                          className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-white/70 transition-all duration-200 hover:bg-white/[0.04] hover:text-white"
+                        >
+                          <Building2 className="h-4 w-4" style={{ color: "#C9A84C" }} />
+                          Painel Parceiro
+                        </Link>
+                      </li>
+                    )}
                   </ul>
                   <div className="mt-6">
                     <button
@@ -491,7 +512,7 @@ function SearchOverlay({ query, setQuery, onClose }: { query: string; setQuery: 
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {results.slice(0, 6).map((service) => {
-                  const seoUrl = `/servico/${service.category.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}/${service.service_id || service.id}`;
+                  const seoUrl = serviceUrl(service.category || "", service.name, undefined, service.service_id || String(service.id));
                   return (
                     <Link
                       key={service.id}
@@ -512,7 +533,7 @@ function SearchOverlay({ query, setQuery, onClose }: { query: string; setQuery: 
               </div>
               {results.length > 6 && (
                 <Link
-                  href={`/busca?q=${encodeURIComponent(query)}`}
+                  href={buildSearchUrl(window.location.origin, query)}
                   onClick={onClose}
                   className="mt-3 block text-center text-xs text-ar-red hover:underline"
                 >

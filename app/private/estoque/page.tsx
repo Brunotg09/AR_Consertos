@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Image from "next/image";
 import {
   Plus,
@@ -12,8 +12,11 @@ import {
   Upload,
   ImageIcon,
   Package,
+  Loader2,
+  ScanSearch,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { compressImageToWebP, deleteFromStorage, scanAndCleanStorage, processPendingImages } from "@/lib/imageUtils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,19 +66,6 @@ interface Product {
 
 const PRODUCT_CONDITIONS = ["novo", "usado", "recondicionado"];
 
-function extractStoragePath(url: string | null, bucket: string): string | null {
-  if (!url) return null;
-  const match = url.match(`/storage/v1/object/public/${bucket}/(.+)`);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-async function deleteImageFromStorage(bucket: string, url: string | null) {
-  if (!url) return;
-  const path = extractStoragePath(url, bucket);
-  if (!path) return;
-  await supabase.storage.from(bucket).remove([path]);
-}
-
 export default function EstoquePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,7 +74,11 @@ export default function EstoquePage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<Map<File, string>>(new Map());
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -112,7 +106,6 @@ export default function EstoquePage() {
       if (error) throw error;
       setProducts(data || []);
     } catch (error) {
-      console.error("Error fetching products:", error);
     } finally {
       setLoading(false);
     }
@@ -152,6 +145,8 @@ export default function EstoquePage() {
       active: true,
     });
     setFormImages([]);
+    setPendingFiles([]);
+    setPreviews(new Map());
     setSelectedProduct(null);
   };
 
@@ -161,6 +156,9 @@ export default function EstoquePage() {
   };
 
   const closeDialog = () => {
+    previews.forEach((url) => URL.revokeObjectURL(url));
+    setPreviews(new Map());
+    setPendingFiles([]);
     setEditDialogOpen(false);
     resetForm();
   };
@@ -180,6 +178,8 @@ export default function EstoquePage() {
       active: product.active,
     });
     setFormImages(product.images || []);
+    setPendingFiles([]);
+    setPreviews(new Map());
     setEditDialogOpen(true);
   };
 
@@ -188,47 +188,55 @@ export default function EstoquePage() {
     setDeleteDialogOpen(true);
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  const addPendingFiles = useCallback((files: FileList | File[]) => {
+    const arr = Array.from(files);
+    const valid = arr.filter((f) => {
+      if (f.size > 10 * 1024 * 1024) { toast.error(`${f.name}: muito grande. Máx 10MB.`); return false; }
+      if (!f.type.startsWith("image/")) { toast.error(`${f.name}: não é imagem.`); return false; }
+      return true;
+    });
+    setPendingFiles((prev) => [...prev, ...valid]);
+    setPreviews((prev) => {
+      const next = new Map(prev);
+      valid.forEach((f) => next.set(f, URL.createObjectURL(f)));
+      return next;
+    });
+  }, []);
 
-    setUploading(true);
-    try {
-      const uploadedUrls: string[] = [];
-
-      for (const file of Array.from(files)) {
-        const fileExt = file.name.split(".").pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-        const filePath = `products/${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("products")
-          .upload(filePath, file);
-
-        if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage
-          .from("products")
-          .getPublicUrl(filePath);
-
-        uploadedUrls.push(publicUrl);
-      }
-
-      setFormImages([...formImages, ...uploadedUrls]);
-    } catch (error) {
-      console.error("Error uploading image:", error);
-      alert("Erro ao fazer upload da imagem");
-    } finally {
-      setUploading(false);
-    }
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) addPendingFiles(e.target.files);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer.files) addPendingFiles(e.dataTransfer.files);
+  }, [addPendingFiles]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+  }, []);
+
   const removeImage = async (index: number) => {
-    const imgToDelete = formImages[index];
-    if (imgToDelete) {
-      await deleteImageFromStorage("products", imgToDelete);
-    }
-    setFormImages(formImages.filter((_, i) => i !== index));
+    setFormImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const removePendingFile = (index: number) => {
+    setPendingFiles((prev) => {
+      const file = prev[index];
+      if (file) {
+        const url = previews.get(file);
+        if (url) URL.revokeObjectURL(url);
+      }
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -236,6 +244,14 @@ export default function EstoquePage() {
     setSaving(true);
 
     try {
+      const finalImages = await processPendingImages(
+        supabase, "products", "products", pendingFiles, formImages
+      );
+
+      previews.forEach((url) => URL.revokeObjectURL(url));
+      setPreviews(new Map());
+      setPendingFiles([]);
+
       const price = formData.price ? parseFloat(formData.price) : 0;
       const costPrice = formData.cost_price ? parseFloat(formData.cost_price) : 0;
       const discountPct = formData.discount_percentage ? parseFloat(formData.discount_percentage) : 0;
@@ -256,7 +272,7 @@ export default function EstoquePage() {
         discount_percentage: Math.round(discountPct),
         stock: parseInt(formData.stock, 10),
         condition: formData.condition || null,
-        images: formImages.length > 0 ? formImages : null,
+        images: finalImages.length > 0 ? finalImages : null,
         active: formData.active,
       };
 
@@ -270,10 +286,10 @@ export default function EstoquePage() {
 
         // Remove imagens antigas que nao estao mais no formulario
         const oldImages = selectedProduct.images || [];
-        const keptImages = formImages;
+        const keptImages = finalImages;
         const imagesToDelete = oldImages.filter((img) => !keptImages.includes(img));
         for (const img of imagesToDelete) {
-          await deleteImageFromStorage("products", img);
+          await deleteFromStorage(supabase, "products", img);
         }
         toast.success("Produto atualizado com sucesso");
       } else {
@@ -287,7 +303,6 @@ export default function EstoquePage() {
     } catch (error) {
       const err = error as { message?: string };
       const msg = err?.message || "Erro ao salvar produto";
-      console.error("Error saving product:", error);
       toast.error(msg);
     } finally {
       setSaving(false);
@@ -307,7 +322,7 @@ export default function EstoquePage() {
       // Remove imagens do storage
       const imgs = selectedProduct.images || [];
       for (const img of imgs) {
-        await deleteImageFromStorage("products", img);
+        await deleteFromStorage(supabase, "products", img);
       }
 
       toast.success(`Produto "${selectedProduct.name}" excluído`);
@@ -317,8 +332,24 @@ export default function EstoquePage() {
     } catch (error) {
       const err = error as { message?: string };
       const msg = err?.message || "Erro ao excluir produto";
-      console.error("Error deleting product:", error);
       toast.error(msg);
+    }
+  };
+
+  const scanStorage = async () => {
+    setScanning(true);
+    try {
+      const allUrls = products.flatMap((p) => p.images || []);
+      const removed = await scanAndCleanStorage(supabase, "products", "products", allUrls);
+      if (removed === 0) {
+        toast.success("Varredura OK: nenhuma imagem órfã encontrada.");
+      } else {
+        toast.success(`Varredura: ${removed} imagem(ns) órfã(s) removida(s).`);
+      }
+    } catch (error) {
+      toast.error("Erro ao varrer storage de produtos.");
+    } finally {
+      setScanning(false);
     }
   };
 
@@ -337,13 +368,24 @@ export default function EstoquePage() {
           <h1 className="font-montserrat text-2xl font-bold text-white">Estoque</h1>
           <p className="mt-1 text-sm text-white/50">Gerencie seus produtos</p>
         </div>
-        <Button
-          onClick={openCreateDialog}
-          className="rounded-xl bg-[#E30613] text-white hover:bg-[#E30613]/90"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Produto
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={scanStorage}
+            disabled={scanning}
+            variant="outline"
+            className="rounded-xl border-white/10 text-white/70 hover:bg-white/[0.04]"
+          >
+            {scanning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanSearch className="mr-2 h-4 w-4" />}
+            {scanning ? "Varrendo..." : "Varredura"}
+          </Button>
+          <Button
+            onClick={openCreateDialog}
+            className="rounded-xl bg-[#E30613] text-white hover:bg-[#E30613]/90"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Produto
+          </Button>
+        </div>
       </div>
 
       {/* Low Stock Alert */}
@@ -493,9 +535,14 @@ export default function EstoquePage() {
             {/* Images */}
             <div className="space-y-3">
               <Label className="text-white/70">Imagens</Label>
-              <div className="flex flex-wrap gap-3">
+              <div
+                className={`flex flex-wrap gap-3 ${dragOver ? "rounded-lg ring-2 ring-[#E30613]/60 p-1" : ""}`}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+              >
                 {formImages.map((img, index) => (
-                  <div key={index} className="relative">
+                  <div key={`old-${index}`} className="relative">
                     <Image
                       src={img}
                       alt={`Imagem ${index + 1}`}
@@ -512,22 +559,36 @@ export default function EstoquePage() {
                     </button>
                   </div>
                 ))}
+                {pendingFiles.map((file, index) => (
+                  <div key={`new-${index}`} className="relative">
+                    <img
+                      src={previews.get(file)}
+                      alt={`Nova ${index + 1}`}
+                      className="h-20 w-20 rounded-lg object-cover"
+                    />
+                    <span className="absolute bottom-0 left-0 rounded bg-emerald-500/80 px-1 py-0.5 text-[7px] text-white">NOVA</span>
+                    <button
+                      type="button"
+                      onClick={() => removePendingFile(index)}
+                      className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#E30613]"
+                    >
+                      <X className="h-3 w-3 text-white" />
+                    </button>
+                  </div>
+                ))}
                 <label className="flex h-20 w-20 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-white/10 transition-colors hover:border-white/20">
-                  {uploading ? (
-                    <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-transparent" />
-                  ) : (
-                    <Upload className="h-5 w-5 text-white/30" />
-                  )}
+                  <Upload className="h-5 w-5 text-white/30" />
                   <input
+                    ref={fileInputRef}
                     type="file"
                     accept="image/*"
                     multiple
                     onChange={handleImageUpload}
                     className="hidden"
-                    disabled={uploading}
                   />
                 </label>
               </div>
+              <p className="text-[10px] text-white/40">Arraste e solte ou clique · WebP ao salvar · Máx. 200KB</p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">

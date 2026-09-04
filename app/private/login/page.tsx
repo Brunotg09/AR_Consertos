@@ -61,7 +61,8 @@ export default function PrivateLoginPage() {
       const isAdmin = session?.user ? await checkIsAdmin(session.user.id) : false;
 
       if (!isAdmin) {
-        await supabase.auth.signOut();
+        const { fullLogout } = await import("@/lib/logout");
+        await fullLogout();
         setError("Acesso negado. Você não tem permissão de administrador.");
         setLoading(false);
         return;

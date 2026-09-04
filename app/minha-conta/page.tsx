@@ -2,6 +2,7 @@
 
 import { supabase } from "@/lib/supabase";
 import { useFloatingWidget } from "@/components/FloatingWidget";
+import { compressImageToWebP } from "@/lib/imageUtils";
 import {
   AlertTriangle,
   ArrowRight,
@@ -12,6 +13,8 @@ import {
   MapPin,
   Phone,
   Save,
+  ShieldCheck,
+  ShieldOff,
   Trash2,
   User,
   X
@@ -26,6 +29,7 @@ interface Profile {
   birth_date: string | null;
   avatar_url: string | null;
   address: Record<string, string> | null;
+  email_2fa_enabled?: boolean;
 }
 
 export default function MinhaContaPage() {
@@ -55,6 +59,13 @@ export default function MinhaContaPage() {
   // Delete account
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+
+  // 2FA
+  const [twoFaEnabled, setTwoFaEnabled] = useState(false);
+  const [twoFaLoading, setTwoFaLoading] = useState(false);
+  const [twoFaMessage, setTwoFaMessage] = useState("");
+  const [twoFaOtp, setTwoFaOtp] = useState("");
+  const [twoFaStep, setTwoFaStep] = useState<"idle" | "verify" | "done">("idle");
 
   useEffect(() => {
     let cancelled = false;
@@ -127,8 +138,8 @@ export default function MinhaContaPage() {
         setBirthDate(data.birth_date || "");
         setAvatarPreview(data.avatar_url || null);
         setAddress(data.address || {});
+        setTwoFaEnabled(data.email_2fa_enabled || false);
       } catch (e) {
-        console.error("[minha-conta] checkAuth error:", e);
         setError("Erro ao carregar perfil. Tente novamente.");
       } finally {
         if (!cancelled) setLoading(false);
@@ -155,29 +166,27 @@ export default function MinhaContaPage() {
     setMessage("");
     setError("");
 
-    console.log("[minha-conta] Salvando perfil para user ID:", profile.id);
-    console.log("[minha-conta] Dados:", { fullName, phone, birthDate, address });
+
 
     let avatarUrl = profile.avatar_url;
     if (avatarFile) {
-      const fileExt = avatarFile.name.split(".").pop();
-      const filePath = `${profile.id}/avatar.${fileExt}`;
-      console.log("[minha-conta] Fazendo upload do avatar:", filePath);
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(filePath, avatarFile, { upsert: true });
-      if (uploadError) {
-        console.log("[minha-conta] ERRO no upload do avatar:", uploadError);
-      } else {
-        const { data: urlData } = supabase.storage
+      try {
+        const webpFile = await compressImageToWebP(avatarFile, 150, 400, 400);
+        const filePath = `${profile.id}/avatar.webp`;
+        const { error: uploadError } = await supabase.storage
           .from("avatars")
-          .getPublicUrl(filePath);
-        avatarUrl = urlData.publicUrl;
-        console.log("[minha-conta] Avatar URL:", avatarUrl);
+          .upload(filePath, webpFile, { upsert: true });
+        if (uploadError) {
+        } else {
+          const { data: urlData } = supabase.storage
+            .from("avatars")
+            .getPublicUrl(filePath);
+          avatarUrl = urlData.publicUrl;
+        }
+      } catch (e) {
       }
     }
 
-    console.log("[minha-conta] Atualizando perfil...");
     const { error: updateError } = await supabase
       .from("profiles")
       .update({
@@ -189,14 +198,10 @@ export default function MinhaContaPage() {
       })
       .eq("id", profile.id);
 
-    console.log("[minha-conta] Resultado do update:", updateError);
-
     setSaving(false);
     if (updateError) {
-      console.log("[minha-conta] ERRO ao salvar perfil:", updateError);
       setError(`Erro ao salvar perfil: ${updateError.message}`);
     } else {
-      console.log("[minha-conta] Perfil salvo com sucesso!");
       setMessage("Perfil atualizado com sucesso!");
       setProfile({ ...profile, full_name: fullName, phone, birth_date: birthDate, avatar_url: avatarUrl, address });
     }
@@ -206,6 +211,10 @@ export default function MinhaContaPage() {
     setMessage("");
     setError("");
 
+    if (!currentPassword) {
+      setError("Informe a senha atual para alterar.");
+      return;
+    }
     if (newPassword.length < 8) {
       setError("A nova senha deve ter pelo menos 8 caracteres.");
       return;
@@ -216,6 +225,19 @@ export default function MinhaContaPage() {
     }
 
     setSaving(true);
+
+    const userEmail = (await supabase.auth.getUser()).data.user?.email || "";
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email: userEmail,
+      password: currentPassword,
+    });
+
+    if (verifyError) {
+      setSaving(false);
+      setError("A senha atual está incorreta.");
+      return;
+    }
+
     const { error: pwError } = await supabase.auth.updateUser({
       password: newPassword,
     });
@@ -244,16 +266,136 @@ export default function MinhaContaPage() {
     if (deleteError) {
       setError(deleteError.message);
     } else {
-      await supabase.auth.signOut();
+      const { fullLogout } = await import("@/lib/logout");
+      await fullLogout();
       router.push("/");
       router.refresh();
     }
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    const { fullLogout } = await import("@/lib/logout");
+    await fullLogout();
     router.push("/");
     router.refresh();
+  };
+
+  const handleEnable2FA = async () => {
+    setTwoFaLoading(true);
+    setTwoFaMessage("");
+    setError("");
+
+    const userEmail = (await supabase.auth.getUser()).data.user?.email || "";
+    const { error: otpError } = await supabase.auth.signInWithOtp({ email: userEmail });
+
+    if (otpError) {
+      setTwoFaLoading(false);
+      setError("Erro ao enviar código. Tente novamente.");
+      return;
+    }
+
+    setTwoFaLoading(false);
+    setTwoFaStep("verify");
+  };
+
+  const handleVerify2FA = async () => {
+    if (twoFaOtp.length !== 6) {
+      setError("Insira o código de 6 dígitos.");
+      return;
+    }
+
+    setTwoFaLoading(true);
+    setError("");
+
+    const userEmail = (await supabase.auth.getUser()).data.user?.email || "";
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      email: userEmail,
+      token: twoFaOtp,
+      type: "email",
+    });
+
+    if (verifyError) {
+      setTwoFaLoading(false);
+      setError("Código inválido ou expirado.");
+      setTwoFaOtp("");
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({ email_2fa_enabled: true })
+      .eq("id", profile!.id);
+
+    setTwoFaLoading(false);
+
+    if (updateError) {
+      setError("Erro ao ativar 2FA. Tente novamente.");
+      return;
+    }
+
+    setTwoFaEnabled(true);
+    setTwoFaStep("done");
+    setTwoFaMessage("2FA ativado com sucesso!");
+    setTwoFaOtp("");
+  };
+
+  const handleDisable2FA = async () => {
+    setTwoFaLoading(true);
+    setTwoFaMessage("");
+    setError("");
+
+    const userEmail = (await supabase.auth.getUser()).data.user?.email || "";
+    const { error: otpError } = await supabase.auth.signInWithOtp({ email: userEmail });
+
+    if (otpError) {
+      setTwoFaLoading(false);
+      setError("Erro ao enviar código. Tente novamente.");
+      return;
+    }
+
+    setTwoFaLoading(false);
+    setTwoFaStep("verify");
+  };
+
+  const handleConfirmDisable2FA = async () => {
+    if (twoFaOtp.length !== 6) {
+      setError("Insira o código de 6 dígitos.");
+      return;
+    }
+
+    setTwoFaLoading(true);
+    setError("");
+
+    const userEmail = (await supabase.auth.getUser()).data.user?.email || "";
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      email: userEmail,
+      token: twoFaOtp,
+      type: "email",
+    });
+
+    if (verifyError) {
+      setTwoFaLoading(false);
+      setError("Código inválido ou expirado.");
+      setTwoFaOtp("");
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({ email_2fa_enabled: false })
+      .eq("id", profile!.id);
+
+    setTwoFaLoading(false);
+
+    if (updateError) {
+      setError("Erro ao desativar 2FA. Tente novamente.");
+      return;
+    }
+
+    setTwoFaEnabled(false);
+    setTwoFaStep("idle");
+    setTwoFaMessage("2FA desativado com sucesso!");
+    setTwoFaOtp("");
   };
 
   if (loading) {
@@ -399,12 +541,29 @@ export default function MinhaContaPage() {
           <Lock className="h-4 w-4" style={{ color: "#8B5CF6" }} />
           <h2 className="font-montserrat text-sm font-bold text-white">Alterar Senha</h2>
         </div>
-        <div className="mt-5 space-y-4">
+        <form onSubmit={(e) => { e.preventDefault(); handleChangePassword(); }} className="mt-5 space-y-4">
+          <input
+            type="email"
+            name="username"
+            autoComplete="username"
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+          />
+          <input
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            placeholder="Senha atual"
+            autoComplete="current-password"
+            className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none transition-all focus:border-ar-purple/50 focus:ring-1 focus:ring-ar-purple/20"
+          />
           <input
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             placeholder="Nova senha (mín. 8 caracteres)"
+            autoComplete="new-password"
             className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none transition-all focus:border-ar-purple/50 focus:ring-1 focus:ring-ar-purple/20"
           />
           <input
@@ -412,17 +571,108 @@ export default function MinhaContaPage() {
             value={confirmNewPassword}
             onChange={(e) => setConfirmNewPassword(e.target.value)}
             placeholder="Confirmar nova senha"
+            autoComplete="new-password"
             className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none transition-all focus:border-ar-purple/50 focus:ring-1 focus:ring-ar-purple/20"
           />
           <button
-            onClick={handleChangePassword}
+            type="submit"
             disabled={saving}
             className="btn-premium-purple flex w-full items-center justify-center gap-2 disabled:opacity-50"
           >
             <ArrowRight className="h-4 w-4" />
             Alterar Senha
           </button>
+        </form>
+      </div>
+
+      {/* 2FA Section */}
+      <div className="mt-12 rounded-xl border border-white/10 bg-white/[0.02] p-6">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4" style={{ color: "#C9A84C" }} />
+          <h2 className="font-montserrat text-sm font-bold text-white">Autenticação em Duas Etapas (2FA)</h2>
         </div>
+        <p className="mt-2 text-xs" style={{ color: "#888888" }}>
+          Adicione uma camada extra de segurança. Ao fazer login, você receberá um código por e-mail.
+        </p>
+
+        {twoFaMessage && (
+          <div
+            className="mt-4 rounded-xl border px-4 py-3 text-sm"
+            style={{
+              borderColor: "#44dd8840",
+              backgroundColor: "#44dd8810",
+              color: "#44dd88",
+            }}
+          >
+            {twoFaMessage}
+          </div>
+        )}
+
+        {twoFaStep === "verify" ? (
+          <div className="mt-4 space-y-3">
+            <p className="text-xs" style={{ color: "#C9A84C" }}>
+              {twoFaEnabled
+                ? "Digite o código enviado para confirmar a desativação:"
+                : "Digite o código enviado para confirmar a ativação:"}
+            </p>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={twoFaOtp}
+              onChange={(e) => {
+                const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+                setTwoFaOtp(v);
+              }}
+              placeholder="000000"
+              className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-center text-lg font-bold tracking-[0.3em] text-white placeholder-white/20 outline-none focus:border-ar-gold/50"
+              style={{ caretColor: "#C9A84C" }}
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setTwoFaStep("idle");
+                  setTwoFaOtp("");
+                  setError("");
+                }}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-white/70 transition-all hover:bg-white/[0.04]"
+              >
+                <X className="h-4 w-4" />
+                Cancelar
+              </button>
+              <button
+                onClick={twoFaEnabled ? handleConfirmDisable2FA : handleVerify2FA}
+                disabled={twoFaLoading || twoFaOtp.length !== 6}
+                className="btn-premium-red flex flex-1 items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {twoFaLoading ? "Verificando..." : "Confirmar"}
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4">
+            {twoFaEnabled ? (
+              <button
+                onClick={handleDisable2FA}
+                disabled={twoFaLoading}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/30 px-4 py-2.5 text-sm font-bold text-white transition-all hover:bg-red-500/10 disabled:opacity-50"
+              >
+                <ShieldOff className="h-4 w-4" />
+                {twoFaLoading ? "Enviando código..." : "Desativar 2FA"}
+              </button>
+            ) : (
+              <button
+                onClick={handleEnable2FA}
+                disabled={twoFaLoading}
+                className="btn-premium-red flex w-full items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                {twoFaLoading ? "Enviando código..." : "Ativar 2FA"}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Delete account */}

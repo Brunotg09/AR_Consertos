@@ -1,7 +1,9 @@
 import { ChatProvider } from "@/components/ChatProvider";
 import { ConditionalLayout } from "@/components/ConditionalLayout";
+import { CookieConsent } from "@/components/CookieConsent";
 import { Toaster } from "@/components/ui/sonner";
 import { CartProvider } from "@/contexts/CartContext";
+import { TwoFAProvider } from "@/contexts/TwoFAProvider";
 import { OfflineBanner } from "@/hooks/useOffline";
 import type { Metadata } from "next";
 import { ThemeProvider } from "next-themes";
@@ -154,11 +156,14 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="dark">
           <OfflineBanner />
           <CartProvider>
-            <ChatProvider>
-              <ConditionalLayout>{children}</ConditionalLayout>
-            </ChatProvider>
+            <TwoFAProvider>
+              <ChatProvider>
+                <ConditionalLayout>{children}</ConditionalLayout>
+              </ChatProvider>
+            </TwoFAProvider>
           </CartProvider>
           <Toaster />
+          <CookieConsent />
         </ThemeProvider>
       </body>
     </html>

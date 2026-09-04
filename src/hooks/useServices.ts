@@ -19,6 +19,12 @@ export interface ServiceItem {
   sort_order: number;
   created_at: string;
   updated_at: string;
+  partner_id?: string | null;
+  partner_name?: string | null;
+  pricing_config?: {
+    model?: "avulso" | "assinatura" | "ambos";
+    intervals?: { value: string; label: string; days: number; price: number }[];
+  } | null;
 }
 
 export function useServices(options?: { activeOnly?: boolean; type?: string }) {
@@ -69,15 +75,33 @@ export function useServices(options?: { activeOnly?: boolean; type?: string }) {
   const addService = async (service: Omit<ServiceItem, "id" | "created_at" | "updated_at" | "service_id"> & Partial<Pick<ServiceItem, "service_id">>) => {
     try {
       const service_id = service.service_id || generateServiceId(service.name);
+      const insertData: Record<string, any> = {
+        service_id,
+        name: service.name,
+        description: service.description,
+        category: service.category,
+        type: service.type,
+        price: service.price,
+        discount_percentage: service.discount_percentage,
+        badge_garantia: service.badge_garantia,
+        icon_name: service.icon_name,
+        images: service.images,
+        active: service.active,
+        sort_order: service.sort_order,
+      };
+      if (service.pricing_config) {
+        insertData.pricing_config = service.pricing_config;
+      }
+
       const { error } = await supabase
         .from("services")
-        .insert([{ ...service, service_id }]);
+        .insert([insertData]);
 
       if (error) throw error;
       await fetchServices();
       return { data: null, error: null };
-    } catch (err) {
-      return { data: null, error: "Erro ao adicionar serviço" };
+    } catch (err: any) {
+      return { data: null, error: err?.message || "Erro ao adicionar serviço" };
     }
   };
 

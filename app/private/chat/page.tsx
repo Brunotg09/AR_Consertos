@@ -84,7 +84,6 @@ export default function AdminChatPage() {
       if (error) throw error;
       setSessions((data || []) as unknown as ChatSession[]);
     } catch (error) {
-      console.error("Error fetching sessions:", error);
     } finally {
       setLoading(false);
     }
@@ -164,7 +163,6 @@ export default function AdminChatPage() {
           .eq("session_id", selectedSession.id)
           .eq("read_by_admin", false);
       } catch (e) {
-        console.error("[chat] loadMessages error:", e);
       }
     };
 
@@ -303,7 +301,6 @@ export default function AdminChatPage() {
         { session_id: selectedSession.id, sender: "admin", admin_id: user?.id, content },
       ]);
     } catch (error) {
-      console.error("Error sending message:", error);
     } finally {
       setSending(false);
     }

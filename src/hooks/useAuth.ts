@@ -4,24 +4,71 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase, getSessionSafe, withTimeout } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
 
+export type UserRole = "admin" | "partner_gestor" | "partner_tech" | "client" | null;
+
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userRole, setUserRole] = useState<UserRole>(null);
+  const [partnerId, setPartnerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
-    const checkAdmin = async (userId: string) => {
+    const checkUserRole = async (userId: string) => {
       try {
-        const data = await withTimeout(
+        // Check admin
+        const adminData = await withTimeout(
           () => supabase.from("user_private").select("id").eq("id", userId).maybeSingle(),
           5000,
           null
         );
-        if (!cancelled) setIsAdmin(!!data);
+        if (cancelled) return;
+
+        setIsAdmin(!!adminData);
+
+        // Check role in user_roles
+        const { data: roleData } = await withTimeout(
+          () => supabase
+            .from("user_roles")
+            .select("role, partner_id")
+            .eq("user_id", userId)
+            .in("role", ["admin", "partner_gestor", "partner_tech"])
+            .maybeSingle(),
+          5000,
+          { data: null, error: null }
+        );
+
+        if (!cancelled && roleData) {
+          setUserRole(roleData.role as UserRole);
+          setPartnerId(roleData.partner_id || null);
+        } else if (!cancelled) {
+          // Fallback: check profiles.partner_id
+          const { data: profileData } = await withTimeout(
+            () => supabase
+              .from("profiles")
+              .select("partner_id")
+              .eq("id", userId)
+              .maybeSingle(),
+            5000,
+            { data: null, error: null }
+          );
+
+          if (!cancelled && profileData?.partner_id) {
+            setUserRole("partner_gestor");
+            setPartnerId(profileData.partner_id);
+          } else if (!cancelled) {
+            setUserRole(null);
+            setPartnerId(null);
+          }
+        }
       } catch {
-        if (!cancelled) setIsAdmin(false);
+        if (!cancelled) {
+          setIsAdmin(false);
+          setUserRole(null);
+          setPartnerId(null);
+        }
       }
     };
 
@@ -31,9 +78,11 @@ export function useAuth() {
         setUser(session?.user ?? null);
         setLoading(false);
         if (session?.user) {
-          checkAdmin(session.user.id);
+          checkUserRole(session.user.id);
         } else {
           setIsAdmin(false);
+          setUserRole(null);
+          setPartnerId(null);
         }
       }
     );
@@ -44,9 +93,11 @@ export function useAuth() {
       setUser(session?.user ?? null);
       setLoading(false);
       if (session?.user) {
-        checkAdmin(session.user.id);
+        checkUserRole(session.user.id);
       } else {
         setIsAdmin(false);
+        setUserRole(null);
+        setPartnerId(null);
       }
     });
 
@@ -57,10 +108,13 @@ export function useAuth() {
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    const { fullLogout } = await import("@/lib/logout");
+    await fullLogout();
     setUser(null);
     setIsAdmin(false);
+    setUserRole(null);
+    setPartnerId(null);
   }, []);
 
-  return { user, isAdmin, loading, signOut };
+  return { user, isAdmin, userRole, partnerId, loading, signOut };
 }

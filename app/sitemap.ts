@@ -44,7 +44,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       return [...staticPages, ...servicePages];
     }
   } catch (error) {
-    console.error('Error fetching services for sitemap:', error);
   }
 
   return staticPages;

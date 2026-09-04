@@ -1,25 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
-import Link from "next/link";
-import Image from "next/image";
+import { getSessionSafe, supabase, withTimeout } from "@/lib/supabase";
+import { User } from "@supabase/supabase-js";
 import {
+  Building2,
+  ChevronRight,
+  FileText,
+  Home,
+  ImageIcon,
   LayoutDashboard,
+  LogOut,
+  Menu,
+  MessageCircle,
   Package,
+  RefreshCw,
+  Search,
   ShoppingBag,
   Users,
   Wrench,
-  ImageIcon,
-  FileText,
-  MessageCircle,
-  LogOut,
-  Menu,
   X,
-  ChevronRight,
 } from "lucide-react";
-import { supabase, getSessionSafe, withTimeout } from "@/lib/supabase";
-import { User } from "@supabase/supabase-js";
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 const adminNavLinks: { href: string; label: string; icon: React.ComponentType<{ className?: string }>; disabled?: boolean; badge?: boolean }[] = [
   { href: "/private/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -28,8 +32,11 @@ const adminNavLinks: { href: string; label: string; icon: React.ComponentType<{ 
   { href: "/private/pedidos", label: "Pedidos", icon: ShoppingBag },
   { href: "/private/clientes", label: "Clientes", icon: Users },
   { href: "/private/servicos", label: "Serviços", icon: Wrench },
+  { href: "/private/parceiros", label: "Parceiros", icon: Building2 },
+  { href: "/private/assinaturas", label: "Assinaturas", icon: RefreshCw },
   { href: "/private/banners", label: "Banners", icon: ImageIcon },
   { href: "/private/relatorios", label: "Relatórios", icon: FileText },
+
 ];
 
 export default function PrivateLayout({
@@ -44,6 +51,7 @@ export default function PrivateLayout({
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [waitingChatCount, setWaitingChatCount] = useState(0);
+  const [partnerName, setPartnerName] = useState<string>("");
 
   const isLoginPage = pathname === "/private/login";
 
@@ -119,8 +127,18 @@ export default function PrivateLayout({
         if (cancelled) return;
 
         setIsAdmin(!!adminData);
+
+        if (cancelled) return;
+
+        // Check profiles.partner_id
+        const { data: profileData } = await withTimeout(
+          () => supabase.from("profiles").select("partner_id").eq("id", session.user.id).maybeSingle(),
+          5000,
+          { data: null, error: null }
+        );
+
+        
       } catch (e) {
-        console.error("[admin] checkAdmin error:", e);
         setIsAdmin(false);
       } finally {
         if (!cancelled) setLoading(false);
@@ -135,7 +153,8 @@ export default function PrivateLayout({
   }, [isLoginPage]);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    const { fullLogout } = await import("@/lib/logout");
+    await fullLogout();
     setUser(null);
     setIsAdmin(false);
     router.push("/");
@@ -159,12 +178,40 @@ export default function PrivateLayout({
 
   if (!isAdmin) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0a0a0a]">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <p className="text-sm text-white/50">Acesso não autorizado.</p>
-          <Link href="/" className="text-sm text-[#E30613] hover:underline">
-            Voltar para o site
-          </Link>
+      <div className="flex min-h-screen items-center justify-center px-4" style={{ backgroundColor: "#0a0a0a" }}>
+        <div className="text-center">
+          <div
+            className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full"
+            style={{ backgroundColor: "rgba(201,168,76,0.1)" }}
+          >
+            <span className="font-bebas text-4xl" style={{ color: "#C9A84C" }}>
+              404
+            </span>
+          </div>
+
+          <h1 className="font-bebas text-4xl tracking-wide text-white sm:text-5xl">
+            PÁGINA NÃO ENCONTRADA
+          </h1>
+          <p className="mt-3 max-w-md text-sm" style={{ color: "#888888" }}>
+            O endereço que você procura não existe ou foi movido para outro local.
+          </p>
+
+          <div className="mt-8 flex justify-center gap-4">
+            <Link
+              href="/"
+              className="btn-premium-red flex items-center gap-2"
+            >
+              <Home className="h-4 w-4" />
+              Página inicial
+            </Link>
+            <Link
+              href="/servicos"
+              className="flex items-center gap-2 rounded-xl border border-white/10 px-5 py-3 text-sm font-medium text-white/70 transition-all hover:bg-white/[0.04]"
+            >
+              <Search className="h-4 w-4" />
+              Ver serviços
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -176,6 +223,7 @@ export default function PrivateLayout({
       <button
         onClick={() => setSidebarOpen(true)}
         className="lg:hidden fixed top-4 left-4 z-40 flex h-10 w-10 items-center justify-center rounded-xl bg-[#0f0f0f] border border-white/[0.06] transition-colors hover:bg-white/[0.08]"
+        aria-label="Abrir menu de navegação"
       >
         <Menu className="h-5 w-5 text-white" />
       </button>
@@ -185,6 +233,9 @@ export default function PrivateLayout({
         <div
           className="lg:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
           onClick={() => setSidebarOpen(false)}
+          role="button"
+          aria-label="Fechar menu"
+          tabIndex={-1}
         />
       )}
 
@@ -215,6 +266,7 @@ export default function PrivateLayout({
             <button
               onClick={() => setSidebarOpen(false)}
               className="lg:hidden flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] transition-colors hover:bg-white/[0.08]"
+              aria-label="Fechar menu"
             >
               <X className="h-4 w-4 text-white" />
             </button>
@@ -262,6 +314,8 @@ export default function PrivateLayout({
                   </li>
                 );
               })}
+
+              
             </ul>
           </nav>
 
@@ -275,7 +329,9 @@ export default function PrivateLayout({
               </div>
               <div className="flex-1 truncate">
                 <p className="truncate text-sm font-medium text-white">{user?.email}</p>
-                <p className="text-xs text-white/40">Administrador</p>
+                <p className="text-xs text-white/40">
+                  {partnerName ? `Parceiro - ${partnerName}` : "Administrador"}
+                </p>
               </div>
             </div>
             <button

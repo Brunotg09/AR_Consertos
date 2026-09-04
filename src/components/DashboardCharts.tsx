@@ -1,22 +1,22 @@
 "use client";
 
+import { Activity, TrendingUp, Wrench } from "lucide-react";
 import { memo } from "react";
 import {
-  BarChart,
   Bar,
-  XAxis,
-  YAxis,
+  BarChart,
   CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
   Cell,
   Legend,
   Line,
   LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
-import { TrendingUp, Activity, Wrench } from "lucide-react";
 
 const COLORS = {
   convencional: "#E30613",

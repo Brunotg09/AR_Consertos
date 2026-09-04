@@ -1,7 +1,7 @@
 "use client";
 
 import { ServiceIcon } from "@/components/ServiceIcon";
-import { useCart } from "@/contexts/CartContext";
+import { useCart, CartServiceItem, getServicePrice } from "@/contexts/CartContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useFloatingWidget } from "@/components/FloatingWidget";
 import {
@@ -13,6 +13,8 @@ import {
   ShoppingCart,
   Trash2,
   Wrench,
+  RefreshCw,
+  Zap,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -20,7 +22,7 @@ import { useEffect } from "react";
 
 export default function CarrinhoPage() {
   const router = useRouter();
-  const { items, removeItem, updateProductQuantity, subtotal, clearCart } = useCart();
+  const { items, removeItem, updateProductQuantity, updateServiceInterval, subtotal, clearCart } = useCart();
   const { user, loading: authLoading } = useAuth();
   const { trigger } = useFloatingWidget();
 
@@ -77,45 +79,95 @@ export default function CarrinhoPage() {
           <div className="mt-8 space-y-4">
             {items.map((item) => {
               if (item.type === "service") {
+                const isPartner = !!item.service.partnerId;
+                const accent = isPartner ? "#10B981" : "#E30613";
+                const hasPricing = !!item.service.pricingConfig?.intervals?.length;
+                const hasAvulso = item.service.pricingConfig?.model === "avulso" || item.service.pricingConfig?.model === "ambos";
+                const hasAssinatura = item.service.pricingConfig?.model === "assinatura" || item.service.pricingConfig?.model === "ambos";
+                const currentPrice = getServicePrice(item as CartServiceItem);
+
                 return (
                   <div
                     key={item.id}
-                    className="flex items-start gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4"
+                    className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4"
                   >
-                    <div
-                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
-                      style={{ backgroundColor: "rgba(227,6,19,0.08)", border: "1px solid rgba(227,6,19,0.15)" }}
-                    >
-                      <ServiceIcon
-                        iconName={item.service.iconName}
-                        className="h-5 w-5"
-                        style={{ color: "#E30613" }}
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-montserrat text-sm font-bold text-white">
-                          {item.service.name}
-                        </span>
-                        <span
-                          className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
-                          style={{ backgroundColor: "#E3061320", color: "#E30613" }}
-                        >
-                          Serviço
-                        </span>
+                    <div className="flex items-start gap-4">
+                      <div
+                        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
+                        style={{ backgroundColor: `${accent}12`, border: `1px solid ${accent}25` }}
+                      >
+                        <ServiceIcon
+                          iconName={item.service.iconName}
+                          className="h-5 w-5"
+                          style={{ color: accent }}
+                        />
                       </div>
-                      <p className="mt-1 text-xs" style={{ color: "#888888" }}>
-                        {item.service.description}
-                      </p>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-montserrat text-sm font-bold text-white">
+                            {item.service.name}
+                          </span>
+                          <span
+                            className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+                            style={{ backgroundColor: `${accent}20`, color: accent }}
+                          >
+                            {isPartner ? "Parceiro" : "Serviço"}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs" style={{ color: "#888888" }}>
+                          {item.service.description}
+                        </p>
+                        <div className="mt-2">
+                          <span className="font-oswald text-sm font-bold" style={{ color: accent }}>
+                            R$ {currentPrice.toFixed(2).replace(".", ",")}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => removeItem(item.id)}
+                        className="shrink-0 rounded-lg p-2 transition-colors hover:bg-white/[0.04]"
+                        style={{ color: "#ff6b6b" }}
+                        aria-label="Remover"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
-                    <button
-                      onClick={() => removeItem(item.id)}
-                      className="shrink-0 rounded-lg p-2 transition-colors hover:bg-white/[0.04]"
-                      style={{ color: "#ff6b6b" }}
-                      aria-label="Remover"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+
+                    {/* Interval selector in cart */}
+                    {hasPricing && hasAssinatura && item.service.pricingConfig?.intervals && (
+                      <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/[0.06] pt-3">
+                        {hasAvulso && (
+                          <button
+                            onClick={() => updateServiceInterval(item.id, "")}
+                            className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[10px] font-medium border transition-all"
+                            style={{
+                              borderColor: !item.service.selectedInterval ? accent : "rgba(255,255,255,0.1)",
+                              backgroundColor: !item.service.selectedInterval ? `${accent}15` : "rgba(255,255,255,0.02)",
+                              color: !item.service.selectedInterval ? accent : "#aaa",
+                            }}
+                          >
+                            <Zap className="h-3 w-3" />
+                            Avulso
+                          </button>
+                        )}
+                        {item.service.pricingConfig.intervals.map((interval) => (
+                          <button
+                            key={interval.value}
+                            onClick={() => updateServiceInterval(item.id, interval.value)}
+                            className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[10px] font-medium border transition-all"
+                            style={{
+                              borderColor: item.service.selectedInterval === interval.value ? "#3B82F6" : "rgba(255,255,255,0.1)",
+                              backgroundColor: item.service.selectedInterval === interval.value ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.02)",
+                              color: item.service.selectedInterval === interval.value ? "#60A5FA" : "#aaa",
+                            }}
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                            {interval.label}
+                            {interval.price ? ` — R$ ${Number(interval.price).toFixed(2).replace(".", ",")}` : ""}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               }

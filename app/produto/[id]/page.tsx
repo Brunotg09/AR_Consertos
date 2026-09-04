@@ -16,6 +16,8 @@ import {
   Shield,
   Truck,
   Star,
+  Plus,
+  Minus,
 } from "lucide-react";
 
 interface Product {
@@ -46,6 +48,7 @@ export default function ProdutoDetalhePage() {
   const [currentImage, setCurrentImage] = useState(0);
   const [added, setAdded] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [quantity, setQuantity] = useState(1);
 
   useEffect(() => {
     trigger("buy");
@@ -106,6 +109,7 @@ export default function ProdutoDetalhePage() {
       } else {
         setProduct(data);
         setImgError(false);
+        setQuantity(1);
       }
     } catch (err) {
       console.error("Error fetching product:", err);
@@ -130,7 +134,7 @@ export default function ProdutoDetalhePage() {
       condition: product.condition,
       category: product.category,
       maxStock: product.stock,
-    });
+    }, quantity);
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
   };
@@ -387,6 +391,40 @@ export default function ProdutoDetalhePage() {
                 {hasStock ? `${product.stock} unidade(s) em estoque` : "Fora de estoque"}
               </span>
             </div>
+
+            {/* Quantity selector */}
+            {hasStock && (
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-medium text-white">Quantidade:</span>
+                <div className="flex items-center rounded-xl border border-white/10 bg-white/[0.02]">
+                  <button
+                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                    disabled={quantity <= 1}
+                    className="flex h-10 w-10 items-center justify-center text-white/70 transition-colors hover:bg-white/5 disabled:opacity-30"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <span className="flex h-10 w-12 items-center justify-center border-x border-white/10 font-oswald text-lg font-bold text-white">
+                    {quantity}
+                  </span>
+                  <button
+                    onClick={() => setQuantity((q) => Math.min(product.stock, q + 1))}
+                    disabled={quantity >= product.stock}
+                    className="flex h-10 w-10 items-center justify-center text-white/70 transition-colors hover:bg-white/5 disabled:opacity-30"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+                {quantity > 1 && (
+                  <span className="text-sm font-medium" style={{ color: "#C9A84C" }}>
+                    {Number((discountedPrice ?? product.price) * quantity).toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    })}
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Trust badges */}
             <div className="grid grid-cols-3 gap-3">

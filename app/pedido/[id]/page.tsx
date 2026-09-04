@@ -44,24 +44,60 @@ export default function PedidoConfirmacaoPage() {
 
   useEffect(() => {
     const fetchOrder = async () => {
+      const id = params.id as string;
+
       const { data: orderData, error: orderError } = await supabase
         .from("orders")
         .select("*")
-        .eq("id", params.id)
+        .eq("id", id)
         .single();
 
-      if (orderError || !orderData) {
+      if (!orderError && orderData) {
+        const { data: itemsData } = await supabase
+          .from("order_items")
+          .select("*")
+          .eq("order_id", id);
+
+        setOrder({
+          id: orderData.id,
+          status: orderData.status,
+          payment_method: orderData.payment_method,
+          total: orderData.total,
+          created_at: orderData.created_at,
+        });
+        setItems(itemsData || []);
         setLoading(false);
         return;
       }
 
-      const { data: itemsData } = await supabase
-        .from("order_items")
-        .select("*")
-        .eq("order_id", params.id);
+      const { data: soData, error: soError } = await supabase
+        .from("service_orders")
+        .select("*, subscriptions!subscription_id(title, monthly_value, visit_interval)")
+        .eq("id", id)
+        .single();
 
-      setOrder(orderData);
-      setItems(itemsData || []);
+      if (!soError && soData) {
+        const sub = Array.isArray(soData.subscriptions) ? soData.subscriptions[0] : soData.subscriptions;
+        setOrder({
+          id: soData.id,
+          status: soData.status,
+          payment_method: null,
+          total: sub?.monthly_value || 0,
+          created_at: soData.created_at,
+        });
+        if (sub) {
+          setItems([{
+            id: 0,
+            item_type: "assinatura",
+            item_name: sub.title || "Serviço por assinatura",
+            price: sub.monthly_value,
+            quantity: 1,
+            scheduled_date: soData.scheduled_date,
+            problem_description: null,
+          }]);
+        }
+      }
+
       setLoading(false);
     };
     fetchOrder();
@@ -76,10 +112,15 @@ export default function PedidoConfirmacaoPage() {
 
   const statusColors: Record<string, string> = {
     pendente: "#ffaa44",
+    pending: "#ffaa44",
     confirmado: "#44dd88",
+    confirmed: "#44dd88",
     em_andamento: "#8B5CF6",
+    in_progress: "#8B5CF6",
     concluido: "#44dd88",
+    completed: "#44dd88",
     cancelado: "#ff6b6b",
+    cancelled: "#ff6b6b",
   };
 
   if (loading) {

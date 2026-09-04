@@ -94,8 +94,6 @@ export default function HistoricoPage() {
     
     // If RPC fails, fallback to direct query
     if (rpcError || !rpcData) {
-      console.warn("RPC failed, falling back to direct query:", rpcError);
-      
       // Direct query by user_id only (simplified - removed complex cliente_id fallback)
       let { data: ordersData, error: ordersError } = await supabase
         .from("orders")

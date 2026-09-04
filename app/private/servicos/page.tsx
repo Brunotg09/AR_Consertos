@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import {
   Search,
   Eye,
@@ -17,10 +17,12 @@ import {
   Upload,
   Image as ImageIcon,
   Plus,
+  ScanSearch,
 } from "lucide-react";
 import { useServices, ServiceItem } from "@/hooks/useServices";
 import { servicesData } from "@/data/services";
 import { supabase } from "@/lib/supabase";
+import { compressImageToWebP, deleteFromStorage, scanAndCleanStorage, processPendingImages } from "@/lib/imageUtils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -70,9 +72,14 @@ export default function ServicosAdminPage() {
     badge_garantia: "",
     icon_name: "Wrench",
   });
+  const [pricingModel, setPricingModel] = useState<"avulso" | "assinatura" | "ambos">("avulso");
+  const [pricingIntervals, setPricingIntervals] = useState<{ value: string; label: string; days: number; price: number }[]>([]);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [images, setImages] = useState<string[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<Map<File, string>>(new Map());
+  const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const allCategories = useMemo(() => {
@@ -92,6 +99,13 @@ export default function ServicosAdminPage() {
     return matchesType && matchesSearch;
   });
 
+  const closeEditDialog = () => {
+    previews.forEach((url) => URL.revokeObjectURL(url));
+    setPreviews(new Map());
+    setPendingFiles([]);
+    setEditDialogOpen(false);
+  };
+
   const openCreateDialog = () => {
     setSelectedService(null);
     setEditForm({
@@ -104,7 +118,11 @@ export default function ServicosAdminPage() {
       badge_garantia: "GARANTIA 90 DIAS",
       icon_name: "Wrench",
     });
+    setPricingModel("avulso");
+    setPricingIntervals([]);
     setImages([]);
+    setPendingFiles([]);
+    setPreviews(new Map());
     setEditDialogOpen(true);
   };
 
@@ -120,63 +138,87 @@ export default function ServicosAdminPage() {
       badge_garantia: service.badge_garantia || "GARANTIA 90 DIAS",
       icon_name: service.icon_name || "Wrench",
     });
+    setPricingModel(service.pricing_config?.model || "avulso");
+    setPricingIntervals(service.pricing_config?.intervals || []);
     setImages(service.images || []);
+    setPendingFiles([]);
+    setPreviews(new Map());
     setEditDialogOpen(true);
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  const addPendingFiles = useCallback((files: FileList | File[]) => {
+    const arr = Array.from(files);
+    const valid = arr.filter((f) => {
+      if (f.size > 10 * 1024 * 1024) { toast.error(`${f.name}: muito grande. Máx 10MB.`); return false; }
+      if (!f.type.startsWith("image/")) { toast.error(`${f.name}: não é imagem.`); return false; }
+      return true;
+    });
+    setPendingFiles((prev) => [...prev, ...valid]);
+    setPreviews((prev) => {
+      const next = new Map(prev);
+      valid.forEach((f) => next.set(f, URL.createObjectURL(f)));
+      return next;
+    });
+  }, []);
 
-    setUploading(true);
-    const newImages = [...images];
-    const folder = selectedService?.service_id || `new-${Date.now()}`;
-
-    for (const file of Array.from(files)) {
-      const fileExt = file.name.split(".").pop();
-      const filePath = `${folder}/${Date.now()}.${fileExt}`;
-
-      const { error } = await supabase.storage
-        .from("service-images")
-        .upload(filePath, file, { upsert: true });
-
-      if (error) {
-        toast.error("Erro ao upload: " + error.message);
-      } else {
-        const { data } = supabase.storage
-          .from("service-images")
-          .getPublicUrl(filePath);
-        newImages.push(data.publicUrl);
-      }
-    }
-
-    setImages(newImages);
-    setUploading(false);
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) addPendingFiles(e.target.files);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer.files) addPendingFiles(e.dataTransfer.files);
+  }, [addPendingFiles]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+  }, []);
+
   const removeImage = async (index: number) => {
-    const imageUrl = images[index];
+    setImages((prev) => prev.filter((_, i) => i !== index));
+  };
 
-    // Try to extract path from URL and delete from storage
-    if (imageUrl.includes("service-images")) {
-      const urlParts = imageUrl.split("service-images/");
-      if (urlParts.length > 1) {
-        const filePath = urlParts[1].split("?")[0];
-        await supabase.storage.from("service-images").remove([filePath]);
+  const removePendingFile = (index: number) => {
+    setPendingFiles((prev) => {
+      const file = prev[index];
+      if (file) {
+        const url = previews.get(file);
+        if (url) URL.revokeObjectURL(url);
       }
-    }
-
-    const newImages = images.filter((_, i) => i !== index);
-    setImages(newImages);
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   const handleSaveEdit = async () => {
-    if (!editForm.name) return;
+    if (!editForm.name) {
+      toast.error("Preencha o nome do serviço.");
+      return;
+    }
     setSaving(true);
+
+    // Compress + upload only pending files
+    const folder = selectedService?.service_id || `new-${Date.now()}`;
+    const finalImages = await processPendingImages(
+      supabase, "service-images", folder, pendingFiles, images
+    );
+
+    // Clean up previews
+    previews.forEach((url) => URL.revokeObjectURL(url));
+    setPreviews(new Map());
+    setPendingFiles([]);
 
     if (selectedService) {
       // Update existing
+      const pricingConfig = pricingModel === "avulso" ? null : { model: pricingModel, intervals: pricingIntervals };
+
       const { error } = await updateService(selectedService.id, {
         name: editForm.name,
         description: editForm.description,
@@ -186,8 +228,9 @@ export default function ServicosAdminPage() {
         discount_percentage: parseInt(editForm.discount_percentage) || 0,
         badge_garantia: editForm.badge_garantia,
         icon_name: editForm.icon_name,
-        images: images,
-      });
+        images: finalImages,
+        pricing_config: pricingConfig,
+      } as any);
 
       if (error) {
         toast.error("Erro ao salvar: " + error);
@@ -198,6 +241,8 @@ export default function ServicosAdminPage() {
     } else {
       // Create new
       const serviceType = editForm.type as "convencional" | "inverter";
+      const pricingConfig = pricingModel === "avulso" ? null : { model: pricingModel, intervals: pricingIntervals };
+
       const { error } = await addService({
         name: editForm.name,
         description: editForm.description,
@@ -207,13 +252,15 @@ export default function ServicosAdminPage() {
         discount_percentage: parseInt(editForm.discount_percentage) || 0,
         badge_garantia: editForm.badge_garantia,
         icon_name: editForm.icon_name || "Wrench",
-        images: images,
-         active: true,
+        images: finalImages,
+        active: true,
         sort_order: 0,
-      });
+        pricing_config: pricingConfig,
+      } as any);
 
       if (error) {
         toast.error("Erro ao criar: " + error);
+        console.error("Create error details:", error);
       } else {
         toast.success(`Serviço "${editForm.name}" criado com sucesso!`);
         setEditDialogOpen(false);
@@ -225,6 +272,11 @@ export default function ServicosAdminPage() {
   const handleDelete = async () => {
     if (!selectedService) return;
     setSaving(true);
+
+    // Remove images from storage
+    for (const img of selectedService.images || []) {
+      await deleteFromStorage(supabase, "service-images", img);
+    }
 
     const { error } = await deleteService(selectedService.id);
 
@@ -246,6 +298,24 @@ export default function ServicosAdminPage() {
     }
   };
 
+  const scanStorage = async () => {
+    setScanning(true);
+    try {
+      const allUrls = services.flatMap((s) => s.images || []);
+      const removed = await scanAndCleanStorage(supabase, "service-images", "service-images", allUrls);
+      if (removed === 0) {
+        toast.success("Varredura OK: nenhuma imagem órfã encontrada.");
+      } else {
+        toast.success(`Varredura: ${removed} imagem(ns) órfã(s) removida(s).`);
+      }
+    } catch (error) {
+      console.error("Error scanning service-images:", error);
+      toast.error("Erro ao varrer storage de serviços.");
+    } finally {
+      setScanning(false);
+    }
+  };
+
   const stats = {
     total: services.length,
     convencional: services.filter((s) => s.type === "convencional").length,
@@ -257,19 +327,30 @@ export default function ServicosAdminPage() {
   return (
     <div className="space-y-6">
        {/* Header */}
-       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-         <div>
-           <h1 className="font-montserrat text-2xl font-bold text-white">Serviços</h1>
-           <p className="mt-1 text-sm text-white/50">Gerencie o catálogo de serviços</p>
-         </div>
-         <Button
-           onClick={openCreateDialog}
-           className="rounded-xl bg-[#E30613] text-white hover:bg-[#E30613]/90"
-         >
-           <Plus className="mr-2 h-4 w-4" />
-           Novo Serviço
-         </Button>
-       </div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="font-montserrat text-2xl font-bold text-white">Serviços</h1>
+            <p className="mt-1 text-sm text-white/50">Gerencie o catálogo de serviços</p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={scanStorage}
+              disabled={scanning}
+              variant="outline"
+              className="rounded-xl border-white/10 text-white/70 hover:bg-white/[0.04]"
+            >
+              {scanning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanSearch className="mr-2 h-4 w-4" />}
+              {scanning ? "Varrendo..." : "Varredura"}
+            </Button>
+            <Button
+              onClick={openCreateDialog}
+              className="rounded-xl bg-[#E30613] text-white hover:bg-[#E30613]/90"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Novo Serviço
+            </Button>
+          </div>
+        </div>
 
       {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row">
@@ -458,7 +539,7 @@ export default function ServicosAdminPage() {
       )}
 
       {/* Edit Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+      <Dialog open={editDialogOpen} onOpenChange={closeEditDialog}>
         <DialogContent className="max-w-2xl">
            <DialogHeader>
              <DialogTitle className="text-white">
@@ -489,41 +570,54 @@ export default function ServicosAdminPage() {
              </div>
            )}
 
-           {/* Images Section */}
-           <div className="space-y-2">
-             <Label className="text-white/70">Imagens do Serviço</Label>
-             <div className="grid grid-cols-4 gap-2">
-               {images.map((img, idx) => (
-                 <div key={idx} className="group relative aspect-square overflow-hidden rounded-lg border border-white/10">
-                   <img src={img} alt={`Imagem ${idx + 1}`} className="h-full w-full object-cover" />
-                   <button
-                     onClick={() => removeImage(idx)}
-                     className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                   >
-                     <X className="h-3 w-3" />
-                   </button>
-                 </div>
-               ))}
-               <label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border border-dashed border-white/20 bg-white/[0.02] transition-colors hover:bg-white/[0.04]">
-                 <input
-                   ref={fileInputRef}
-                   type="file"
-                   accept="image/*"
-                   multiple
-                   onChange={handleImageUpload}
-                   className="hidden"
-                 />
-                 {uploading ? (
-                   <Loader2 className="h-6 w-6 animate-spin text-white/50" />
-                 ) : (
-                   <Upload className="h-6 w-6 text-white/30" />
-                 )}
-               </label>
-             </div>
-             <p className="text-[10px] text-white/40">
-               Formatos: JPG, PNG, WebP. Tamanho máximo: 5MB por imagem.
-             </p>
-           </div>
+            {/* Images Section */}
+            <div className="space-y-2">
+              <Label className="text-white/70">Imagens do Serviço</Label>
+              <div
+                className={`grid grid-cols-4 gap-2 ${dragOver ? "rounded-lg ring-2 ring-[#E30613]/60 p-1" : ""}`}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+              >
+                {images.map((img, idx) => (
+                  <div key={`old-${idx}`} className="group relative aspect-square overflow-hidden rounded-lg border border-white/10">
+                    <img src={img} alt={`Imagem ${idx + 1}`} className="h-full w-full object-cover" />
+                    <button
+                      onClick={() => removeImage(idx)}
+                      className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                {pendingFiles.map((file, idx) => (
+                  <div key={`new-${idx}`} className="group relative aspect-square overflow-hidden rounded-lg border border-dashed border-emerald-400/40">
+                    <img src={previews.get(file)} alt={`Nova ${idx + 1}`} className="h-full w-full object-cover" />
+                    <span className="absolute bottom-1 left-1 rounded bg-emerald-500/80 px-1 py-0.5 text-[8px] text-white">NOVA</span>
+                    <button
+                      onClick={() => removePendingFile(idx)}
+                      className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                <label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border border-dashed border-white/20 bg-white/[0.02] transition-colors hover:bg-white/[0.04]">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImageUpload}
+                    className="hidden"
+                  />
+                  <Upload className="h-6 w-6 text-white/30" />
+                </label>
+              </div>
+              <p className="text-[10px] text-white/40">
+                Arraste e solte ou clique para adicionar · Conversão para WebP ao salvar · Máx. 200KB
+              </p>
+            </div>
 
            <div className="grid grid-cols-2 gap-4">
              <div className="space-y-2">
@@ -617,10 +711,147 @@ export default function ServicosAdminPage() {
                  Inverter
                </button>
              </div>
-           </div>
+            </div>
 
-           <div className="space-y-2">
-             <Label className="text-white/70">Ícone do Serviço</Label>
+            <div className="space-y-2">
+              <Label className="text-white/70">Modelo de Cobrança</Label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setPricingModel("avulso"); setPricingIntervals([]); }}
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    pricingModel === "avulso"
+                      ? "bg-[#E30613] text-white"
+                      : "bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+                  }`}
+                >
+                  Avulso
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPricingModel("assinatura")}
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    pricingModel === "assinatura"
+                      ? "bg-[#3B82F6] text-white"
+                      : "bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+                  }`}
+                >
+                  Assinatura
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPricingModel("ambos")}
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    pricingModel === "ambos"
+                      ? "bg-[#F59E0B] text-white"
+                      : "bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+                  }`}
+                >
+                  Ambos
+                </button>
+              </div>
+              <p className="text-xs text-white/40">
+                {pricingModel === "avulso" && "Serviço cobrado por atendimento individual."}
+                {pricingModel === "assinatura" && "Disponível apenas via plano de assinatura mensal com visitas recorrentes."}
+                {pricingModel === "ambos" && "O cliente pode escolher entre avulso ou assinatura mensal."}
+              </p>
+            </div>
+
+            {pricingModel !== "avulso" && (
+              <div className="col-span-full space-y-3 rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium text-blue-300">Intervalos de Visita</Label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const existing = pricingIntervals.map((i) => i.value);
+                      const allOptions = [
+                        { value: "7d", label: "A cada 7 dias", days: 7 },
+                        { value: "15d", label: "A cada 15 dias", days: 15 },
+                        { value: "1m", label: "A cada 1 mês", days: 30 },
+                        { value: "2m", label: "A cada 2 meses", days: 60 },
+                        { value: "3m", label: "A cada 3 meses", days: 90 },
+                        { value: "6m", label: "A cada 6 meses", days: 180 },
+                      ];
+                      const available = allOptions.filter((o) => !existing.includes(o.value));
+                      if (available.length > 0) {
+                        setPricingIntervals([...pricingIntervals, { ...available[0], price: 0 }]);
+                      }
+                    }}
+                    className="text-xs text-blue-400 hover:text-blue-300"
+                  >
+                    + Adicionar intervalo
+                  </button>
+                </div>
+                {pricingIntervals.length === 0 ? (
+                  <p className="text-xs text-white/30">Nenhum intervalo configurado. Clique em "+ Adicionar intervalo".</p>
+                ) : (
+                  <div className="space-y-2">
+                    {pricingIntervals.map((interval, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <select
+                          value={interval.value}
+                          onChange={(e) => {
+                            const allOptions = [
+                              { value: "7d", label: "A cada 7 dias", days: 7 },
+                              { value: "15d", label: "A cada 15 dias", days: 15 },
+                              { value: "1m", label: "A cada 1 mês", days: 30 },
+                              { value: "2m", label: "A cada 2 meses", days: 60 },
+                              { value: "3m", label: "A cada 3 meses", days: 90 },
+                              { value: "6m", label: "A cada 6 meses", days: 180 },
+                            ];
+                            const selected = allOptions.find((o) => o.value === e.target.value);
+                            if (selected) {
+                              const updated = [...pricingIntervals];
+                              updated[idx] = { ...selected, price: interval.price };
+                              setPricingIntervals(updated);
+                            }
+                          }}
+                          className="flex-1 rounded-lg border border-white/10 bg-[#1a1a1a] px-3 py-2 text-sm text-white outline-none"
+                          style={{ colorScheme: "dark" }}
+                        >
+                          <option value="7d" className="bg-[#1a1a1a]">A cada 7 dias</option>
+                          <option value="15d" className="bg-[#1a1a1a]">A cada 15 dias</option>
+                          <option value="1m" className="bg-[#1a1a1a]">A cada 1 mês</option>
+                          <option value="2m" className="bg-[#1a1a1a]">A cada 2 meses</option>
+                          <option value="3m" className="bg-[#1a1a1a]">A cada 3 meses</option>
+                          <option value="6m" className="bg-[#1a1a1a]">A cada 6 meses</option>
+                        </select>
+                        <div className="relative w-32">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-white/40">R$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={interval.price || ""}
+                            onChange={(e) => {
+                              const updated = [...pricingIntervals];
+                              updated[idx] = { ...interval, price: parseFloat(e.target.value) || 0 };
+                              setPricingIntervals(updated);
+                            }}
+                            placeholder="0,00"
+                            className="w-full rounded-lg border border-white/10 bg-[#1a1a1a] pl-8 pr-2 py-2 text-sm text-white outline-none [color-scheme:dark]"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPricingIntervals(pricingIntervals.filter((_, i) => i !== idx))}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-white/30 hover:bg-red-500/10 hover:text-red-400"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[11px] text-white/30">
+                  Defina as opções de frequência e o preço para cada intervalo. O cliente escolherá ao assinar.
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label className="text-white/70">Ícone do Serviço</Label>
              <Select
                value={editForm.icon_name}
                onValueChange={(value) => setEditForm({ ...editForm, icon_name: value })}
@@ -654,11 +885,10 @@ export default function ServicosAdminPage() {
                  <SelectItem value="Bike" className="pl-8">🚲 Bike (Bicicleta)</SelectItem>
                  <SelectItem value="Sun" className="pl-8">☀️ Sun (Sol)</SelectItem>
                </SelectContent>
-            </Select>
-           </div>
+           </Select>
+            </div>
 
-
-           <DialogFooter>
+            <DialogFooter>
             <Button
               variant="outline"
               onClick={() => setEditDialogOpen(false)}

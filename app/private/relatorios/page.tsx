@@ -122,6 +122,13 @@ export default function RelatoriosPage() {
   const [topServices, setTopServices] = useState<TopService[]>([]);
   const [orderCount, setOrderCount] = useState(0);
   const [avgTicket, setAvgTicket] = useState(0);
+  const [partnerCommissionData, setPartnerCommissionData] = useState({
+    totalComissao: 0,
+    totalParceiros: 0,
+    receitaPropria: 0,
+    receitaParceiros: 0,
+    osParceiroCount: 0,
+  });
 
   const getDateRange = useCallback(() => {
     const now = new Date();
@@ -293,6 +300,28 @@ export default function RelatoriosPage() {
       const grandTotal = totalConvencional + totalInverter + totalProdutos;
       setAvgTicket(filteredOrders.length > 0 ? grandTotal / filteredOrders.length : 0);
 
+      // Fetch completed service_orders for partner commission data
+      const { data: soData } = await supabase
+        .from("service_orders")
+        .select("id, total, commission_value, partner_value, status, partner_id, completed_at")
+        .eq("status", "completed")
+        .gte("completed_at", start.toISOString())
+        .lte("completed_at", end.toISOString());
+
+      const soList = soData || [];
+      const totalComissao = soList.reduce((sum, so) => sum + (Number(so.commission_value) || 0), 0);
+      const totalParceirosVal = soList.reduce((sum, so) => sum + (Number(so.partner_value) || 0), 0);
+      const receitaParceiros = soList.reduce((sum, so) => sum + (Number(so.total) || 0), 0);
+      const receitaPropria = grandTotal - receitaParceiros;
+
+      setPartnerCommissionData({
+        totalComissao,
+        totalParceiros: totalParceirosVal,
+        receitaPropria: Math.max(0, receitaPropria),
+        receitaParceiros,
+        osParceiroCount: soList.length,
+      });
+
       // Receita Recebida: pedidos concluídos
       const recebida = filteredOrders
         .filter((o: OrderData) => o.status === "concluido")
@@ -331,7 +360,6 @@ export default function RelatoriosPage() {
           .slice(0, 5)
       );
     } catch (error) {
-      console.error("Error fetching data:", error);
     } finally {
       setLoading(false);
     }
@@ -402,7 +430,6 @@ export default function RelatoriosPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error("Error exporting JSON:", error);
     } finally {
       setExporting(false);
     }
@@ -458,7 +485,6 @@ export default function RelatoriosPage() {
       margin: { left: margin, right: margin },
     });
 
-    // @ts-ignore
     y = doc.lastAutoTable?.finalY || y + 30;
     y += 10;
 
@@ -690,6 +716,34 @@ export default function RelatoriosPage() {
           </div>
         </div>
       </div>
+
+      {/* Partner Commission Summary */}
+      {partnerCommissionData.osParceiroCount > 0 && (
+        <div className="rounded-2xl border border-[#8B5CF6]/20 bg-[#8B5CF6]/5 p-6">
+          <h2 className="mb-4 font-montserrat text-lg font-bold text-white flex items-center gap-2">
+            <DollarSign className="h-5 w-5 text-[#8B5CF6]" /> Comissões de Parceiros
+          </h2>
+          <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+            <div>
+              <p className="text-xs text-white/50">Receita Própria</p>
+              <p className="text-lg font-bold text-white">{formatCurrency(partnerCommissionData.receitaPropria)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-white/50">Receita de Parceiros</p>
+              <p className="text-lg font-bold text-[#8B5CF6]">{formatCurrency(partnerCommissionData.receitaParceiros)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-white/50">Comissão Total (nosso corte)</p>
+              <p className="text-lg font-bold text-[#C9A84C]">{formatCurrency(partnerCommissionData.totalComissao)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-white/50">Valor Líquido a Parceiros</p>
+              <p className="text-lg font-bold text-[#22c55e]">{formatCurrency(partnerCommissionData.totalParceiros)}</p>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-white/40">{partnerCommissionData.osParceiroCount} OSs de parceiros concluídas no período</p>
+        </div>
+      )}
 
       {/* Charts */}
       <RelatoriosCharts

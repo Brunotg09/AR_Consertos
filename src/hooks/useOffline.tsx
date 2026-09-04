@@ -60,7 +60,6 @@ export function useOffline() {
       }));
       setStatus((prev) => ({ ...prev, pendingData: true }));
     } catch (error) {
-      console.error("Error saving to localStorage:", error);
     }
   }, []);
 
@@ -71,7 +70,6 @@ export function useOffline() {
       if (!item) return null;
       return JSON.parse(item);
     } catch (error) {
-      console.error("Error loading from localStorage:", error);
       return null;
     }
   }, []);

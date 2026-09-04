@@ -49,7 +49,7 @@ export default function InverterPage() {
         className="border-b border-white/5"
         style={{ backgroundColor: "#161616" }}
       >
-        <div className="mx-auto  max-w-full px-4 py-12 sm:px-8 lg:px-20">
+        <div className="mx-auto  max-w-full px-4 py-16 sm:px-8 lg:px-20">
           <div className="flex flex-col items-center text-center gap-3">
             <div
               className="flex h-16 w-16 items-center justify-center rounded-full"
