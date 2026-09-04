@@ -18,33 +18,36 @@ export function useAuth() {
 
     const checkUserRole = async (userId: string) => {
       try {
-        // Check admin
-        const adminData = await withTimeout(
-          () => supabase.from("user_private").select("id").eq("id", userId).maybeSingle(),
-          5000,
-          null
-        );
+        // Run admin check and role check in parallel
+        const [adminData, roleResult] = await Promise.all([
+          withTimeout(
+            () => supabase.from("user_private").select("id").eq("id", userId).maybeSingle(),
+            5000,
+            null
+          ),
+          withTimeout(
+            () => supabase
+              .from("user_roles")
+              .select("role, partner_id")
+              .eq("user_id", userId)
+              .in("role", ["admin", "partner_gestor", "partner_tech"])
+              .maybeSingle(),
+            5000,
+            { data: null, error: null }
+          ),
+        ]);
+
         if (cancelled) return;
 
         setIsAdmin(!!adminData);
 
-        // Check role in user_roles
-        const { data: roleData } = await withTimeout(
-          () => supabase
-            .from("user_roles")
-            .select("role, partner_id")
-            .eq("user_id", userId)
-            .in("role", ["admin", "partner_gestor", "partner_tech"])
-            .maybeSingle(),
-          5000,
-          { data: null, error: null }
-        );
+        const roleData = roleResult?.data;
 
-        if (!cancelled && roleData) {
+        if (roleData) {
           setUserRole(roleData.role as UserRole);
           setPartnerId(roleData.partner_id || null);
-        } else if (!cancelled) {
-          // Fallback: check profiles.partner_id
+        } else {
+          // Fallback: check profiles.partner_id only if no role found
           const { data: profileData } = await withTimeout(
             () => supabase
               .from("profiles")

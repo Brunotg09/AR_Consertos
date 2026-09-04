@@ -1,7 +1,7 @@
 import { HeroCarousel } from "@/components/HeroCarousel";
 import { ServiceCard } from "@/components/ServiceCard";
 import { productUrl } from "@/lib/slugify";
-import { supabase } from "@/lib/supabase";
+import { createServerSupabase } from "@/lib/supabase-server";
 import {
   ArrowRight,
   Cpu,
@@ -24,6 +24,7 @@ export const metadata: Metadata = {
 
 async function getServices() {
   try {
+    const supabase = createServerSupabase();
     const { data, error } = await supabase
       .from("services")
       .select("*")
@@ -40,6 +41,7 @@ async function getServices() {
 
 async function getPartnerServices() {
   try {
+    const supabase = createServerSupabase();
     const { data, error } = await supabase
       .from("partner_services")
       .select("*, partners:partner_id(name)")
@@ -60,6 +62,7 @@ async function getPartnerServices() {
 
 async function getProducts() {
   try {
+    const supabase = createServerSupabase();
     const { data, error } = await supabase
       .from("products")
       .select("*")
@@ -75,17 +78,21 @@ async function getProducts() {
   }
 }
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function Home() {
-  const allServices = await getServices();
+  const [allServices, partnerServices, products] = await Promise.all([
+    getServices(),
+    getPartnerServices(),
+    getProducts(),
+  ]);
+
+  const daySeed = new Date().getDate();
   const convencionais = allServices
     .filter((s) => s.type === "convencional")
-    .sort(() => Math.random() - 0.5)
+    .sort((a, b) => ((a.id + daySeed) % 3) - ((b.id + daySeed) % 3))
     .slice(0, 12);
   const inverters = allServices.filter((s) => s.type === "inverter");
-  const partnerServices = await getPartnerServices();
-  const products = await getProducts();
 
   return (
     <div>

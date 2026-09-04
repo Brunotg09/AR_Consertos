@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 
 export interface ServicePricingInterval {
@@ -204,31 +204,31 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(STORAGE_KEY);
   }, []);
 
-  const totalItems = items.reduce((sum, i) => {
+  const totalItems = useMemo(() => items.reduce((sum, i) => {
     if (i.type === "product") return sum + i.quantity;
     return sum + 1;
-  }, 0);
+  }, 0), [items]);
 
-  const subtotal = items.reduce((sum, i) => {
+  const subtotal = useMemo(() => items.reduce((sum, i) => {
     if (i.type === "product") return sum + i.price * i.quantity;
     if (i.type === "service") return sum + getServicePrice(i);
     return sum;
-  }, 0);
+  }, 0), [items]);
+
+  const value = useMemo(() => ({
+    items,
+    addService,
+    addProduct,
+    removeItem,
+    updateProductQuantity,
+    updateServiceInterval,
+    clearCart,
+    totalItems,
+    subtotal,
+  }), [items, addService, addProduct, removeItem, updateProductQuantity, updateServiceInterval, clearCart, totalItems, subtotal]);
 
   return (
-    <CartContext.Provider
-      value={{
-        items,
-        addService,
-        addProduct,
-        removeItem,
-        updateProductQuantity,
-        updateServiceInterval,
-        clearCart,
-        totalItems,
-        subtotal,
-      }}
-    >
+    <CartContext.Provider value={value}>
       {children}
     </CartContext.Provider>
   );

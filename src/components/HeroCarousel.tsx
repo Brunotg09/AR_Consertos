@@ -2,7 +2,7 @@
 
 import { supabase } from "@/lib/supabase";
 import { Award, Cpu, Settings, Wrench, Zap } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 
 const iconMap: Record<
   string,
@@ -27,7 +27,7 @@ interface Banner {
   icon_name: string | null;
 }
 
-export function HeroCarousel() {
+export const HeroCarousel = memo(function HeroCarousel() {
   const [current, setCurrent] = useState(0);
   const [banners, setBanners] = useState<Banner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -223,4 +223,4 @@ export function HeroCarousel() {
       </div>
     </section>
   );
-}
+});

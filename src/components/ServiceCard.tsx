@@ -3,6 +3,7 @@
 import { ServicePricingConfig, useCart } from "@/contexts/CartContext";
 import { serviceUrl } from "@/lib/slugify";
 import { ArrowUpRight, Building2, CalendarCheck, ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -133,16 +134,15 @@ export function ServiceCard({ service, variant, partner }: ServiceCardProps) {
         <div className="relative h-[180px] w-full overflow-hidden">
           {images.length > 0 ? (
             <>
-              {images.map((img, idx) => (
-                <img
-                  key={idx}
-                  src={img}
-                  alt={`${service.name} ${idx + 1}`}
-                  className="absolute inset-0 h-full w-full object-cover transition-opacity duration-500"
-                  style={{ opacity: idx === currentImage ? 1 : 0 }}
-                  loading="lazy"
-                />
-              ))}
+              <Image
+                key={currentImage}
+                src={images[currentImage]}
+                alt={`${service.name} ${currentImage + 1}`}
+                fill
+                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                className="object-cover transition-opacity duration-500"
+                loading="lazy"
+              />
               {images.length > 1 && (
                 <>
                   <button

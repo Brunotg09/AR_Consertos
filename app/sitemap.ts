@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { supabase } from '@/lib/supabase';
+import { createServerSupabase } from '@/lib/supabase-server';
 
 const baseUrl = 'https://ar-consertos.vercel.app';
 
@@ -25,6 +25,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   try {
+    const supabase = createServerSupabase();
     const { data: services } = await supabase
       .from('services')
       .select('id, name, category, type, service_id')

@@ -27,13 +27,33 @@ export interface ServiceItem {
   } | null;
 }
 
+// Simple in-memory cache to avoid duplicate fetches
+const servicesCache = new Map<string, { data: ServiceItem[]; timestamp: number }>();
+const CACHE_TTL = 60 * 1000; // 60 seconds
+
+function getCacheKey(options?: { activeOnly?: boolean; type?: string }): string {
+  return `${options?.activeOnly ?? true}-${options?.type ?? "all"}`;
+}
+
 export function useServices(options?: { activeOnly?: boolean; type?: string }) {
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
+  const cacheKey = getCacheKey(options);
 
   const fetchServices = useCallback(async () => {
+    // Check cache first
+    const cached = servicesCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      if (mountedRef.current) {
+        setServices(cached.data);
+        setError(null);
+        setLoading(false);
+      }
+      return;
+    }
+
     try {
       let query = supabase
         .from("services")
@@ -52,8 +72,13 @@ export function useServices(options?: { activeOnly?: boolean; type?: string }) {
 
       if (fetchError) throw fetchError;
 
+      const result = data || [];
+
+      // Update cache
+      servicesCache.set(cacheKey, { data: result, timestamp: Date.now() });
+
       if (mountedRef.current) {
-        setServices(data || []);
+        setServices(result);
         setError(null);
       }
     } catch (err) {
@@ -64,7 +89,7 @@ export function useServices(options?: { activeOnly?: boolean; type?: string }) {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [options?.activeOnly, options?.type]);
+  }, [cacheKey, options?.activeOnly, options?.type]);
 
   useEffect(() => {
     mountedRef.current = true;

@@ -30,18 +30,19 @@ export function TwoFAProvider({ children }: { children: React.ReactNode }) {
     checkedRef.current = pathname;
 
     const check = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      // Short-circuit: check session first, skip if not logged in
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
 
       const { data: profile } = await supabase
         .from("profiles")
         .select("email_2fa_enabled, two_fa_verified_at")
-        .eq("id", user.id)
+        .eq("id", session.user.id)
         .single();
 
       if (profile?.email_2fa_enabled && !profile?.two_fa_verified_at) {
         router.push(
-          `/auth/verificar-email?email=${encodeURIComponent(user.email || "")}&redirect=${encodeURIComponent(pathname)}`
+          `/auth/verificar-email?email=${encodeURIComponent(session.user.email || "")}&redirect=${encodeURIComponent(pathname)}`
         );
       }
     };
