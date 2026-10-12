@@ -5,6 +5,8 @@ import { ServiceIcon } from "@/components/ServiceIcon";
 import { CartProductItem, CartServiceItem, useCart, getServicePrice } from "@/contexts/CartContext";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
+import { sendOrderEmail } from "@/lib/email";
+import ProductPaymentModal from "@/components/checkout/ProductPaymentModal";
 import {
   AlertTriangle,
   ArrowRight,
@@ -39,6 +41,70 @@ const emptyAddress: AddressForm = {
   uf: "",
 };
 
+/** Guarda o "pedido aguardando pagamento" (order já criado) p/ sobreviver a reload. */
+const PENDING_PAYMENT_KEY = "arc_pending_payment";
+
+type PendingPayment = {
+  orderId: string;
+  amount: number;
+  subIds: string[];
+  customerName: string;
+};
+
+function readPendingPayment(): PendingPayment | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_PAYMENT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.orderId === "string") return parsed as PendingPayment;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function persistPendingPayment(pp: PendingPayment | null) {
+  try {
+    if (pp) sessionStorage.setItem(PENDING_PAYMENT_KEY, JSON.stringify(pp));
+    else sessionStorage.removeItem(PENDING_PAYMENT_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Guarda os dados do checkout ANTES do pagamento (order NÃO criado ainda). */
+const PENDING_CHECKOUT_KEY = "arc_pending_checkout";
+
+type PendingCheckout = {
+  items: any[];
+  paymentMethod: string;
+  scheduledDate: string | null;
+  serviceAddress: AddressForm;
+  deliveryAddress: AddressForm;
+  problemDescription: string;
+  subtotal: number;
+  clientName: string;
+};
+
+function readPendingCheckout(): PendingCheckout | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_CHECKOUT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function persistPendingCheckout(pc: PendingCheckout | null) {
+  try {
+    if (pc) sessionStorage.setItem(PENDING_CHECKOUT_KEY, JSON.stringify(pc));
+    else sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, subtotal, clearCart } = useCart();
@@ -65,6 +131,19 @@ export default function CheckoutPage() {
   const [serviceAddress, setServiceAddress] = useState<AddressForm>(emptyAddress);
   const [deliveryAddress, setDeliveryAddress] = useState<AddressForm>(emptyAddress);
   const [paymentMethod, setPaymentMethod] = useState<"dinheiro" | "pix" | "cartao" | "">("");
+  const [pendingPayment, setPendingPayment] = useState<{
+    orderId: string;
+    amount: number;
+    subIds: string[];
+    customerName: string;
+  } | null>(null);
+
+  // Restaura um pagamento pendente caso a aba recarregue (ex.: PWA/troca de aba).
+  useEffect(() => {
+    const saved = readPendingPayment();
+    if (saved) setPendingPayment(saved);
+  }, []);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [loadingCep, setLoadingCep] = useState(false);
@@ -172,6 +251,55 @@ export default function CheckoutPage() {
 
   const buildAddressString = (addr: AddressForm) =>
     `${addr.rua}, ${addr.numero} - ${addr.bairro}, ${addr.localidade} - ${addr.uf}, ${addr.cep}`;
+
+  /** Finaliza o checkout: limpa carrinho, envia e-mails e redireciona. */
+  const finalizeCheckout = async (
+    finalOrderId: string | null,
+    subIds: string[],
+    customerName: string
+  ) => {
+    clearCart();
+
+    if (finalOrderId) {
+      sendOrderEmail({ type: "order_confirmation", orderId: finalOrderId, userId: user.id });
+      sendOrderEmail({ type: "order_to_admin", orderId: finalOrderId, customerName });
+    }
+
+    if (subIds.length > 0) {
+      const firstSubId = subIds[0];
+      const { data: subServiceOrder } = await supabase
+        .from("service_orders")
+        .select("id")
+        .eq("subscription_id", firstSubId)
+        .maybeSingle();
+      if (subServiceOrder) {
+        router.push(`/pedido/${subServiceOrder.id}`);
+      } else {
+        router.push("/minha-conta");
+      }
+    } else if (finalOrderId) {
+      router.push(`/pedido/${finalOrderId}`);
+    } else {
+      router.push("/minha-conta");
+    }
+  };
+
+  /** Chamado pelo modal quando o cliente paga ou decide pagar depois. */
+  const finishPaymentFlow = () => {
+    if (!pendingPayment) return; // idempotente
+    const { orderId: poId, subIds: poSubIds, customerName: poName } = pendingPayment;
+    setPendingPayment(null);
+    persistPendingPayment(null);
+    finalizeCheckout(poId, poSubIds, poName);
+  };
+
+  /** Chamado pelo modal quando o cliente CANCELA o pedido e volta ao carrinho. */
+  const handleCancelPayment = () => {
+    if (!pendingPayment) return;
+    setPendingPayment(null);
+    persistPendingPayment(null);
+    // Não finaliza — carrinho permanece, usuário continua editando
+  };
 
   const handleSubmit = async () => {
     setError("");
@@ -481,26 +609,27 @@ export default function CheckoutPage() {
     }
 
     setLoading(false);
-    clearCart();
 
     const subIds = Object.values(subscriptionMap);
-    if (subIds.length > 0) {
-      const firstSubId = subIds[0];
-      const { data: subServiceOrder } = await supabase
-        .from("service_orders")
-        .select("id")
-        .eq("subscription_id", firstSubId)
-        .maybeSingle();
-      if (subServiceOrder) {
-        router.push(`/pedido/${subServiceOrder.id}`);
-      } else {
-        router.push("/minha-conta");
-      }
-    } else if (orderId) {
-      router.push(`/pedido/${orderId}`);
-    } else {
-      router.push("/minha-conta");
+    const productTotal = productItems.reduce(
+      (sum, p) => sum + Number(p.price) * Number(p.quantity),
+      0
+    );
+    const needsProductPayment =
+      productItems.length > 0 &&
+      productTotal > 0 &&
+      (paymentMethod === "pix" || paymentMethod === "cartao");
+
+    // Produtos com PIX/cartão: cobra agora via Mercado Pago antes de finalizar.
+    if (needsProductPayment && orderId) {
+      const pp = { orderId, amount: productTotal, subIds, customerName: clientName };
+      setPendingPayment(pp);
+      persistPendingPayment(pp);
+      return;
     }
+
+    // Dinheiro (paga na entrega) ou sem produtos: só registra e finaliza.
+    await finalizeCheckout(orderId, subIds, clientName);
   };
 
   if (items.length === 0) {
@@ -767,7 +896,7 @@ export default function CheckoutPage() {
             );
           })}
         </div>
-        {paymentMethod === "pix" && (
+        {paymentMethod === "pix" && !hasProduct && (
           <div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: "rgba(201,168,76,0.2)", backgroundColor: "rgba(201,168,76,0.05)", color: "#C9A84C" }}>
             Chave PIX: <strong>(79) 99944-6596</strong>
           </div>
@@ -782,6 +911,21 @@ export default function CheckoutPage() {
         {loading ? "Processando..." : "Confirmar Pedido"}
         <ArrowRight className="h-4 w-4" />
       </button>
+
+      {pendingPayment && (
+        <ProductPaymentModal
+          open
+          onOpenChange={() => {
+            // O modal bloqueia fechamento externo (clique fora / ESC / X).
+            // A saída é sempre explícita e chega via onComplete.
+          }}
+          orderId={pendingPayment.orderId}
+          amount={pendingPayment.amount}
+          initialMethod={paymentMethod === "cartao" ? "credit_card" : "pix"}
+          onComplete={finishPaymentFlow}
+          onCancel={handleCancelPayment}
+        />
+      )}
     </div>
   );
 }

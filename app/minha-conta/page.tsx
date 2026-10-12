@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import MySubscriptions from "@/components/MySubscriptions";
 
 interface Profile {
   id: string;
@@ -673,6 +674,11 @@ export default function MinhaContaPage() {
             )}
           </div>
         )}
+      </div>
+
+      {/* Minhas assinaturas */}
+      <div className="mt-12">
+        <MySubscriptions />
       </div>
 
       {/* Delete account */}

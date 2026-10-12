@@ -30,6 +30,7 @@ import {
   Building2,
 } from "lucide-react";
 import { supabase, withTimeout } from "@/lib/supabase";
+import { sendOrderEmail } from "@/lib/email";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,6 +65,8 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useServices } from "@/hooks/useServices";
 import { generateOSPDF, generateSingleItemOSPDF, PDFCliente, PDFOrder, PDFOrderItem } from "@/lib/generateOSPDF";
+import PassarParaParceiroDialog from "@/components/admin/PassarParaParceiroDialog";
+import { mapServiceToPartnerCategory } from "@/lib/partner-utils";
 
 // Types
 interface Cliente {
@@ -109,6 +112,7 @@ interface OrderItem {
   product_condition: string | null;
   product_images: string[] | null;
   partner_id?: string | null;
+  service_order_id?: string | null;
   teste_equipamento_ligado?: boolean;
   teste_funcao_principal?: boolean;
   teste_funcoes_secundarias?: boolean;
@@ -149,7 +153,7 @@ interface ServiceOrder {
   address: string;
   scheduled_date: string;
   status: string;
-  partner?: { name: string };
+  partner?: { full_name: string };
   total: number;
   commission_value: number;
   partner_value: number;
@@ -264,9 +268,24 @@ export default function PedidosPage() {
   });
 
   // Partner assignment state
-  const [partners, setPartners] = useState<{ id: string; name: string }[]>([]);
+  const [partners, setPartners] = useState<{ id: string; full_name: string; categories: string[] | null }[]>([]);
   const [selectedPartnerId, setSelectedPartnerId] = useState("");
   const [assigningPartner, setAssigningPartner] = useState(false);
+  const [assignCategory, setAssignCategory] = useState<string>("");
+  const [partnerSearch, setPartnerSearch] = useState("");
+  const [showPartnerList, setShowPartnerList] = useState(false);
+
+  // Passar para Parceiro (modo corrida)
+  const [offerDialogOpen, setOfferDialogOpen] = useState(false);
+  const [offerContext, setOfferContext] = useState<{
+    orderId: string;
+    itemId: number;
+    clientName: string;
+    clientPhone: string | null;
+    address: string | null;
+    total: number;
+    category?: string;
+  } | null>(null);
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -295,7 +314,7 @@ export default function PedidosPage() {
 
         const { data: soData } = await supabase
           .from("service_orders")
-          .select("*, partner:partners(name)")
+          .select("*, partner:partners(full_name)")
           .in("order_id", orderIds);
         allServiceOrders = soData || [];
       }
@@ -367,9 +386,9 @@ export default function PedidosPage() {
       const { data } = await withTimeout(
         () => supabase
           .from("partners")
-          .select("id, name")
+          .select("id, full_name, categories")
           .eq("active", true)
-          .order("name"),
+          .order("full_name"),
         8000,
         { data: null, error: null }
       );
@@ -387,8 +406,26 @@ export default function PedidosPage() {
     fetchPartners();
   }, [fetchOrders, fetchClientes, fetchProductos, fetchProfiles, fetchPartners]);
 
+  // Pedido totalmente delegado (todos os itens são serviços com parceiro) → some da lista
+  const isFullyDelegated = (order: (typeof orders)[number]) => {
+    const items = order.items || [];
+    if (items.length === 0) return false;
+    return items.every((item) => {
+      if (item.item_type !== "servico") return false;
+      return (
+        !!item.partner_id ||
+        !!item.service_order_id ||
+        (order.service_orders || []).some(
+          (so) => (so as { order_item_id?: number }).order_item_id === item.id
+        )
+      );
+    });
+  };
+
   // Filtered lists
   const filteredOrders = orders.filter((order) => {
+    if (isFullyDelegated(order)) return false;
+
     const searchLower = search.toLowerCase();
     const matchesSearch =
       !search ||
@@ -458,11 +495,9 @@ export default function PedidosPage() {
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       pendente: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-      aguardando_orcamento: "bg-orange-500/20 text-orange-400 border-orange-500/30",
       orcamento_enviado: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
-      confirmado: "bg-blue-500/20 text-blue-400 border-blue-500/30",
       em_andamento: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-      pronta: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+      pronto: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
       entregue: "bg-teal-500/20 text-teal-400 border-teal-500/30",
       concluido: "bg-green-500/20 text-green-400 border-green-500/30",
       cancelado: "bg-red-500/20 text-red-400 border-red-500/30",
@@ -473,11 +508,9 @@ export default function PedidosPage() {
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
       pendente: "Pendente",
-      aguardando_orcamento: "Aguardando Orçamento",
       orcamento_enviado: "Orçamento Enviado",
-      confirmado: "Confirmado",
       em_andamento: "Em Andamento",
-      pronta: "Pronta",
+      pronto: "Pronto",
       entregue: "Entregue",
       concluido: "Concluído",
       cancelado: "Cancelado",
@@ -487,16 +520,14 @@ export default function PedidosPage() {
 
   const STATUS_FLOW = [
     "pendente",
-    "aguardando_orcamento",
     "orcamento_enviado",
-    "confirmado",
     "em_andamento",
-    "pronta",
+    "pronto",
     "entregue",
     "concluido",
   ] as const;
 
-  const FINALIZED_STATUSES = ["concluido", "cancelado", "pronta", "entregue"];
+  const FINALIZED_STATUSES = ["concluido", "cancelado", "pronto", "entregue"];
 
   const getItemBorderColor = (item: OrderItem) => {
     if (item.item_type === "produto") return "border-l-[#C9A84C]";
@@ -521,10 +552,33 @@ export default function PedidosPage() {
     return { totalPago, totalPendente };
   };
 
-  const updateOrderStatus = async (orderId: string, newStatus: string) => {
+  const [sendEmailMap, setSendEmailMap] = useState<Record<string, boolean>>({});
+
+  const updateOrderStatus = async (orderId: string, newStatus: string, sendEmail?: boolean) => {
     try {
       const order = orders.find((o) => o.id === orderId);
-      const oldStatus = order?.status;
+
+      // Verificação: entregue só pode ser marcado se completed_at estiver preenchido
+      if (newStatus === "entregue") {
+        const hasCompletedItem = order?.items?.some(
+          (item) => item.completed_at && item.item_type === "servico"
+        );
+        if (!hasCompletedItem) {
+          toast.error("Para marcar como 'Entregue', o serviço deve estar concluído primeiro");
+          return;
+        }
+      }
+
+      // Verificação: concluido só pode ser marcado se pagamento estiver pago
+      if (newStatus === "concluido") {
+        const hasUnpaidItems = order?.items?.some(
+          (item) => item.payment_status !== "pago" && item.item_type !== "produto"
+        );
+        if (hasUnpaidItems) {
+          toast.error("Para marcar como 'Concluído', todos os serviços devem estar pagos");
+          return;
+        }
+      }
 
       const { error } = await supabase
         .from("orders")
@@ -533,24 +587,26 @@ export default function PedidosPage() {
 
       if (error) throw error;
 
-      // Handle stock for products when confirming
-      if (newStatus === "confirmado" && order?.items) {
-        for (const item of order.items) {
-          if (item.item_type === "produto") {
-            await supabase.rpc("managed_decrement_stock", {
-              product_id: parseInt(item.item_id),
-              qty: item.quantity
-            });
-          }
+      // WhatsApp notifications
+      if (order?.cliente) {
+        let statusMsg = "";
+        if (newStatus === "em_andamento") {
+          statusMsg = `Olá! Seu aparelho ${order.items?.[0]?.item_name || "está em manutenção"} está em andamento. Em breve entraremos em contato com mais detalhes.`;
+        } else if (newStatus === "pronto") {
+          statusMsg = `Olá! Seu aparelho ${order.items?.[0]?.item_name || "está pronto"} está pronto para retirada!`;
+        } else if (newStatus === "entregue") {
+          statusMsg = `Olá! Seu aparelho ${order.items?.[0]?.item_name || "foi entregue"} foi entregue com sucesso. Obrigado pela preferência!`;
+        } else if (newStatus === "concluido") {
+          statusMsg = `Olá! Seu aparelho ${order.items?.[0]?.item_name || "está concluído"} foi finalizado. Qualquer problema, entre em contato.`;
+        }
+        if (statusMsg) {
+          sendWhatsAppNotification(order.cliente.telefone, statusMsg);
         }
       }
 
-      // WhatsApp notifications
-      if ((newStatus === "em_andamento" || newStatus === "concluido") && order?.cliente) {
-        const statusMsg = newStatus === "em_andamento"
-          ? `Olá! Seu aparelho ${order.items?.[0]?.item_name || "está em manutenção"} está em andamento. Em breve entraremos em contato com mais detalhes.`
-          : `Olá! Seu aparelho ${order.items?.[0]?.item_name || "está pronto"} está pronto! Pode retirar quando quiser.`;
-        sendWhatsAppNotification(order.cliente.telefone, statusMsg);
+      // Email notification
+      if (sendEmail) {
+        sendOrderEmail({ type: "order_status_update", orderId, status: newStatus });
       }
 
       toast.success(`Status atualizado para ${getStatusLabel(newStatus)}`);
@@ -564,7 +620,8 @@ export default function PedidosPage() {
     try {
       const updates: Record<string, any> = { status: newStatus };
 
-      if (newStatus === "concluido" && !item.completed_at) {
+      // Quando o serviço é concluído (pronto), preenche completed_at e garantia
+      if (newStatus === "pronto" && !item.completed_at) {
         const completedAt = new Date();
         const warrantyExpires = new Date(completedAt);
         warrantyExpires.setDate(warrantyExpires.getDate() + 90);
@@ -1149,28 +1206,51 @@ export default function PedidosPage() {
   const openAssignPartnerDialog = (order: Order) => {
     setSelectedOrder(order);
     setSelectedPartnerId("");
+    setPartnerSearch("");
+    setShowPartnerList(false);
+    const serviceItem = (order.items || []).find(
+      (i) => i.item_type === "servico" && !i.completed_at
+    );
+    setAssignCategory(mapServiceToPartnerCategory(serviceItem?.item_name));
     setAssignPartnerDialogOpen(true);
   };
 
   const handleAssignPartner = async () => {
-    if (!selectedOrder || !selectedPartnerId) {
-      toast.error("Selecione um parceiro.");
+    if (!selectedOrder) {
+      toast.error("Selecione um pedido.");
       return;
     }
 
+    const serviceItem = (selectedOrder.items || []).find(
+      (i) => i.item_type === "servico" && !i.completed_at
+    );
+
+    if (!serviceItem) {
+      toast.error("Nenhum serviço pendente encontrado neste pedido.");
+      return;
+    }
+
+    // Modo corrida: sem parceiro específico → oferta para TODOS da categoria
+    if (!selectedPartnerId) {
+      if (!assignCategory) return toast.error("Serviço sem categoria identificada.");
+      setAssignPartnerDialogOpen(false);
+      setOfferContext({
+        orderId: selectedOrder.id,
+        itemId: serviceItem.id,
+        clientName: selectedOrder.cliente?.nome || "Cliente",
+        clientPhone: selectedOrder.cliente?.telefone || null,
+        address: formatAddress(selectedOrder.cliente?.endereco) || selectedOrder.notes || null,
+        total: serviceItem.price || 0,
+        category: assignCategory,
+      });
+      setOfferDialogOpen(true);
+      return;
+    }
+
+    // Atribuição direta ao parceiro pesquisado
     setAssigningPartner(true);
 
     try {
-      const serviceItem = (selectedOrder.items || []).find(
-        (i) => i.item_type === "servico" && !i.completed_at
-      );
-
-      if (!serviceItem) {
-        toast.error("Nenhum serviço pendente encontrado neste pedido.");
-        setAssigningPartner(false);
-        return;
-      }
-
       const { data, error } = await supabase.rpc("create_service_order", {
         p_order_id: selectedOrder.id,
         p_partner_id: selectedPartnerId,
@@ -1518,12 +1598,29 @@ export default function PedidosPage() {
                     <div className="space-y-3">
                       {(order.items || [])
                         .filter((item) => typeFilter === "all" || item.item_type === typeFilter)
+                        .filter((item) => {
+                          if (item.item_type !== "servico") return true;
+                          const hasSO =
+                            !!item.partner_id ||
+                            !!item.service_order_id ||
+                            (order.service_orders || []).some(
+                              (so) => (so as { order_item_id?: number }).order_item_id === item.id
+                            );
+                          return !hasSO;
+                        })
                         .map((item) => {
                         const itemTotal = (item.price || 0) * item.quantity;
                         const itemPaid = item.amount_paid || 0;
                         const isPaid = item.payment_status === "pago";
                         const isPartial = item.payment_status === "pago_parcial";
                         const isCompleted = item.completed_at && item.item_type === "servico";
+                        const itemSO = item.service_order_id
+                          ? (order.service_orders || []).find((so) => so.id === item.service_order_id)
+                          : undefined;
+                        const inPartnerFlow = !!(item.partner_id || item.service_order_id);
+                        const partnerSoLabel = itemSO
+                          ? { offered: "Ofertado", accepted: "Aceito", in_progress: "Em andamento", completed: "Concluído", pending: "Aguardando", expired: "Expirado", cancelled: "Cancelado" }[itemSO.status] || itemSO.status
+                          : "Com Parceiro";
 
                         return (
                           <div
@@ -1562,18 +1659,17 @@ export default function PedidosPage() {
                               </div>
 
                               <div className="flex items-center gap-2 flex-wrap">
-                                {/* Item Status */}
-                                {item.partner_id ? (
+                                {/* Item com parceiro: só um status */}
+                                {inPartnerFlow ? (
                                   <span
-                                    className="inline-flex h-6 min-w-[90px] items-center justify-center rounded-full px-2 text-[10px] font-bold"
-                                    style={{
-                                      backgroundColor: `${getStatusColor(item.status || "pendente").split(" ")[0].replace("bg-", "").replace("/20", "")}20`,
-                                      color: getStatusColor(item.status || "pendente").split(" ")[1].replace("text-", ""),
-                                    }}
+                                    className="inline-flex h-6 items-center gap-1 rounded-full bg-[#8B5CF6]/20 px-2 text-[10px] font-bold text-[#8B5CF6]"
+                                    title={itemSO ? `OS do parceiro: ${partnerSoLabel}` : "Serviço com parceiro"}
                                   >
-                                    {item.status || "pendente"} — Parceiro
+                                    <Building2 className="h-3 w-3" />
+                                    {partnerSoLabel}
                                   </span>
                                 ) : (
+                                  <>
                                 <Select
                                   value={item.status || "pendente"}
                                   onValueChange={(value) => updateItemStatus(item, value)}
@@ -1589,36 +1685,31 @@ export default function PedidosPage() {
                                   </SelectTrigger>
                                   <SelectContent className="bg-[#1a1a1a] border-white/10">
                                     <SelectItem value="pendente" className="text-white text-xs">Pendente</SelectItem>
-                                    <SelectItem value="aguardando_orcamento" className="text-white text-xs">Aguardando Orçamento</SelectItem>
                                     <SelectItem value="orcamento_enviado" className="text-white text-xs">Orçamento Enviado</SelectItem>
-                                    <SelectItem value="confirmado" className="text-white text-xs">Confirmado</SelectItem>
                                     <SelectItem value="em_andamento" className="text-white text-xs">Em Andamento</SelectItem>
-                                    <SelectItem value="pronta" className="text-white text-xs">Pronta</SelectItem>
+                                    <SelectItem value="pronto" className="text-white text-xs">Pronto</SelectItem>
                                     <SelectItem value="entregue" className="text-white text-xs">Entregue</SelectItem>
                                     <SelectItem value="concluido" className="text-white text-xs">Concluído</SelectItem>
                                     <SelectItem value="cancelado" className="text-white text-xs text-red-400">Cancelado</SelectItem>
                                   </SelectContent>
                                 </Select>
-                                )}
 
                                 {/* Payment Status */}
-                                <>
-                                  {isPaid ? (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
-                                      <CheckCircle className="h-3 w-3" />
-                                      Pago
-                                    </span>
-                                  ) : isPartial ? (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/20 px-2 py-0.5 text-xs text-orange-400">
-                                      Pago {formatCurrency(itemPaid)} | Falta {formatCurrency(itemTotal - itemPaid)}
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs text-yellow-400">
-                                      <Clock className="h-3 w-3" />
-                                      Pendente
-                                    </span>
-                                  )}
-                                </>
+                                {isPaid ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
+                                    <CheckCircle className="h-3 w-3" />
+                                    Pago
+                                  </span>
+                                ) : isPartial ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/20 px-2 py-0.5 text-xs text-orange-400">
+                                    Pago {formatCurrency(itemPaid)} | Falta {formatCurrency(itemTotal - itemPaid)}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs text-yellow-400">
+                                    <Clock className="h-3 w-3" />
+                                    Pendente
+                                  </span>
+                                )}
 
                                 {/* Actions */}
                                 {item.item_type === "servico" && !isCompleted && (
@@ -1661,6 +1752,31 @@ export default function PedidosPage() {
                                     Pagamento
                                   </button>
                                 )}
+                                {/* Modo corrida: passar item de serviço para parceiro */}
+                                {item.item_type === "servico" &&
+                                  !item.partner_id &&
+                                  !isCompleted &&
+                                  item.price != null &&
+                                  item.price > 0 && (
+                                    <button
+                                      onClick={() => {
+                                        setOfferContext({
+                                          orderId: order.id,
+                                          itemId: item.id,
+                                          clientName: order.cliente?.nome || "Cliente",
+                                          clientPhone: order.cliente?.telefone || null,
+                                          address: order.notes || null,
+                                          total: item.price || 0,
+                                          category: mapServiceToPartnerCategory(item.item_name),
+                                        });
+                                        setOfferDialogOpen(true);
+                                      }}
+                                      className="rounded bg-[#8B5CF6]/20 px-2 py-1 text-xs text-[#8B5CF6] hover:bg-[#8B5CF6]/30"
+                                      title="Ofertar este serviço aos parceiros da categoria"
+                                    >
+                                      Passar p/ Parceiro
+                                    </button>
+                                  )}
                                 {/* O.S. individual */}
                                 <button
                                   onClick={() => handlePrintItemOS(order, item)}
@@ -1669,6 +1785,8 @@ export default function PedidosPage() {
                                 >
                                   📄 O.S.
                                 </button>
+                                  </>
+                                )}
                                 {isCompleted && (
                                   <span className="text-xs text-green-400">
                                     Garantia até {format(new Date(item.warranty_expires_at!), "dd/MM/yyyy")}
@@ -1710,107 +1828,61 @@ export default function PedidosPage() {
                       })}
                     </div>
 
-                    {/* Service Orders (Parceiros) — Somente Leitura */}
-                    {order.service_orders && order.service_orders.length > 0 && (
-                      <div className="mt-3 space-y-2 border-t border-white/[0.04] pt-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">O.S. Parceiro (referência)</p>
-                        {order.service_orders.map((so) => (
-                          <div
-                            key={so.id}
-                            className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <Building2 className="h-4 w-4 text-[#8B5CF6]" />
-                                <div>
-                                  <span className="text-xs font-medium text-white">{so.partner?.name || "Parceiro"}</span>
-                                  <p className="text-[10px] text-white/40">{so.address}</p>
-                                  <p className="text-[10px] text-white/40">
-                                    {so.scheduled_date ? format(new Date(so.scheduled_date), "dd/MM/yyyy") : "Sem data"}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {Number(so.total) > 0 && (
-                                  <div className="text-right">
-                                    <p className="text-xs font-bold text-white">{formatCurrency(Number(so.total))}</p>
-                                    <p className="text-[10px] text-[#C9A84C]">Comissão: {formatCurrency(Number(so.commission_value))}</p>
-                                  </div>
-                                )}
-                                <span
-                                  className="rounded-full px-2 py-0.5 text-[10px] font-bold"
-                                  style={{
-                                    backgroundColor: so.status === "completed" ? "#22c55e20" : so.status === "cancelled" ? "#E3061320" : "#EAB30820",
-                                    color: so.status === "completed" ? "#22c55e" : so.status === "cancelled" ? "#E30613" : "#EAB308",
-                                  }}
-                                >
-                                  {so.status === "pending" ? "Pendente" : so.status === "in_progress" ? "Em Andamento" : so.status === "completed" ? "Concluído" : so.status === "cancelled" ? "Cancelado" : so.status}
-                                </span>
-                              </div>
-                            </div>
-                            {/* Payment Status for completed OS */}
-                            {so.status === "completed" && Number(so.total) > 0 && (
-                              <div className="mt-2 flex items-center justify-between border-t border-white/[0.04] pt-2">
-                                <div className="flex items-center gap-2">
-                                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                    so.payment_status === "pago" ? "bg-[#22c55e]/10 text-[#22c55e]" :
-                                    so.payment_status === "pago_parcial" ? "bg-[#3B82F6]/10 text-[#3B82F6]" :
-                                    "bg-[#F59E0B]/10 text-[#F59E0B]"
-                                  }`}>
-                                    {so.payment_status === "pago" ? "Pago" : so.payment_status === "pago_parcial" ? "Parcial" : "Pendente"}
-                                  </span>
-                                  {Number(so.amount_paid) > 0 && (
-                                    <span className="text-[10px] text-white/40">Pago: {formatCurrency(Number(so.amount_paid))}</span>
-                                  )}
-                                </div>
-                                {so.payment_status !== "pago" && (
-                                  <button
-                                    onClick={() => openSOPaymentDialog(so)}
-                                    className="flex items-center gap-1 rounded-lg bg-[#C9A84C]/10 px-2 py-1 text-[10px] text-[#C9A84C] hover:bg-[#C9A84C]/20"
-                                  >
-                                    <DollarSign className="h-3 w-3" /> Registrar Pgto
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
 
                     {/* Order Actions */}
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] pt-4">
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {/* Status Change */}
                         <Select
                           value={order.status || "pendente"}
-                          onValueChange={(value) => updateOrderStatus(order.id, value)}
+                          onValueChange={(value) => updateOrderStatus(order.id, value, sendEmailMap[order.id] ?? false)}
                         >
                           <SelectTrigger className={`w-36 rounded-lg border-0 text-xs font-medium ${getStatusColor(order.status)}`}>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="bg-[#1a1a1a] border-white/10">
                             <SelectItem value="pendente" className="text-white">Pendente</SelectItem>
-                            <SelectItem value="aguardando_orcamento" className="text-white">Aguardando Orçamento</SelectItem>
                             <SelectItem value="orcamento_enviado" className="text-white">Orçamento Enviado</SelectItem>
-                            <SelectItem value="confirmado" className="text-white">Confirmado</SelectItem>
                             <SelectItem value="em_andamento" className="text-white">Em Andamento</SelectItem>
-                            <SelectItem value="pronta" className="text-white">Pronta</SelectItem>
+                            <SelectItem value="pronto" className="text-white">Pronto</SelectItem>
                             <SelectItem value="entregue" className="text-white">Entregue</SelectItem>
                             <SelectItem value="concluido" className="text-white">Concluído</SelectItem>
                             <SelectItem value="cancelado" className="text-white text-red-400">Cancelado</SelectItem>
                           </SelectContent>
                         </Select>
+
+                        {/* Send email checkbox */}
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={sendEmailMap[order.id] ?? false}
+                            onChange={(e) => setSendEmailMap((prev) => ({ ...prev, [order.id]: e.target.checked }))}
+                            className="h-3.5 w-3.5 rounded border-white/20 bg-white/[0.05] text-[#8B5CF6] accent-[#8B5CF6]"
+                          />
+                          <Mail className="h-3.5 w-3.5 text-white/40" />
+                          <span className="text-xs text-white/40">Enviar email</span>
+                        </label>
                       </div>
 
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => openAssignPartnerDialog(order)}
-                          className="flex items-center gap-1 rounded-lg bg-[#8B5CF6]/10 px-3 py-2 text-sm text-[#8B5CF6] hover:bg-[#8B5CF6]/20"
-                        >
-                          <Building2 className="h-4 w-4" />
-                          <span className="hidden sm:inline">Atribuir Parceiro</span>
-                        </button>
+                        {(() => {
+                          const pendingServices = (order.items || []).filter(
+                            (i) => i.item_type === "servico" && !i.completed_at
+                          );
+                          const allWithPartner =
+                            pendingServices.length > 0 &&
+                            pendingServices.every((i) => i.partner_id || i.service_order_id);
+                          if (allWithPartner) return null;
+                          return (
+                            <button
+                              onClick={() => openAssignPartnerDialog(order)}
+                              className="flex items-center gap-1 rounded-lg bg-[#8B5CF6]/10 px-3 py-2 text-sm text-[#8B5CF6] hover:bg-[#8B5CF6]/20"
+                            >
+                              <Building2 className="h-4 w-4" />
+                              <span className="hidden sm:inline">Atribuir Parceiro</span>
+                            </button>
+                          );
+                        })()}
                         <button
                           onClick={() => handlePrintOS(order)}
                           className="flex items-center gap-1 rounded-lg bg-green-500/10 px-3 py-2 text-sm text-green-400 hover:bg-green-500/20"
@@ -1844,24 +1916,79 @@ export default function PedidosPage() {
 
           <div className="space-y-4">
             <p className="text-sm text-white/60">
-              Selecione a empresa parceira responsável por este atendimento.
-              Uma OS de campo será criada automaticamente.
+              Sem selecionar ninguém, a oferta vai para <strong className="text-white">todos os parceiros da categoria</strong> (corrida — quem aceitar primeiro leva).
+              Pesquise o nome para atribuir a um específico.
             </p>
 
-            <div className="space-y-2">
+            {assignCategory && (
+              <div className="flex items-center gap-2 rounded-lg bg-[#C9A84C]/10 px-3 py-2 text-xs text-[#C9A84C]">
+                <span className="font-medium">Serviço:</span> {assignCategory}
+                <span className="text-white/40">(parceiros da categoria)</span>
+              </div>
+            )}
+
+            <div className="relative space-y-2">
               <Label className="text-white/70">Empresa Parceira *</Label>
-              <select
-                value={selectedPartnerId}
-                onChange={(e) => setSelectedPartnerId(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white outline-none"
-              >
-                <option value="">Selecione o parceiro</option>
-                {partners.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+              {showPartnerList && (
+                <button
+                  type="button"
+                  aria-label="Fechar lista"
+                  className="fixed inset-0 z-30 cursor-default"
+                  onClick={() => setShowPartnerList(false)}
+                />
+              )}
+              <Input
+                value={showPartnerList ? partnerSearch : partners.find((p) => p.id === selectedPartnerId)?.full_name || ""}
+                onChange={(e) => {
+                  setPartnerSearch(e.target.value);
+                  setSelectedPartnerId("");
+                  setShowPartnerList(true);
+                }}
+                onFocus={() => setShowPartnerList(true)}
+                placeholder="(opcional) Pesquise o nome para atribuir a um parceiro específico..."
+                className="relative z-10 border-white/10 bg-[#1a1a1a] text-white"
+              />
+              {showPartnerList &&
+                (() => {
+                  const q = partnerSearch.toLowerCase();
+                  const categoryPartners = assignCategory
+                    ? partners.filter((p) => (p.categories || []).includes(assignCategory))
+                    : partners;
+                  const visible = categoryPartners.filter(
+                    (p) => !q || p.full_name.toLowerCase().includes(q)
+                  );
+                  return (
+                    <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-white/10 bg-[#1a1a1a] shadow-xl">
+                      {visible.length === 0 ? (
+                        <p className="px-4 py-3 text-sm text-white/40">
+                          {partners.length === 0
+                            ? "Nenhum parceiro ativo. Cadastre em /private/parceiros."
+                            : `Nenhum parceiro da categoria "${assignCategory}" para "${partnerSearch}".`}
+                        </p>
+                      ) : (
+                        visible.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedPartnerId(p.id);
+                              setPartnerSearch(p.full_name);
+                              setShowPartnerList(false);
+                            }}
+                            className={`block w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-white/[0.06] ${
+                              selectedPartnerId === p.id ? "bg-[#C9A84C]/10 text-[#C9A84C]" : "text-white"
+                            }`}
+                          >
+                            {p.full_name}
+                            <span className="ml-2 text-[10px] text-white/30">
+                              {(p.categories || []).join(", ")}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  );
+                })()}
             </div>
 
             {partners.length === 0 && (
@@ -1874,7 +2001,7 @@ export default function PedidosPage() {
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-wrap gap-2">
             <Button
               variant="ghost"
               onClick={() => setAssignPartnerDialogOpen(false)}
@@ -1884,10 +2011,14 @@ export default function PedidosPage() {
             </Button>
             <Button
               onClick={handleAssignPartner}
-              disabled={assigningPartner || !selectedPartnerId}
+              disabled={assigningPartner}
               className="bg-[#8B5CF6] hover:bg-[#8B5CF6]/90"
             >
-              {assigningPartner ? "Atribuindo..." : "Atribuir e Criar OS"}
+              {assigningPartner
+                ? "Enviando..."
+                : selectedPartnerId
+                  ? "Atribuir e Criar OS"
+                  : "Ofertar p/ Categoria"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2466,7 +2597,7 @@ export default function PedidosPage() {
                 </div>
 
                 {/* TESTE FINAL - só para serviços prontos/concluídos */}
-                {selectedItem.item_type === "servico" && ["pronta", "concluido", "entregue"].includes(selectedItem.status || "pendente") && (
+                {selectedItem.item_type === "servico" && ["pronto", "concluido", "entregue"].includes(selectedItem.status || "pendente") && (
                 <div className="rounded-lg bg-blue-500/10 p-3">
                   <h4 className="font-semibold text-white mb-3">TESTE FINAL</h4>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -2495,7 +2626,7 @@ export default function PedidosPage() {
                 )}
 
                 {/* ENTREGA DO EQUIPAMENTO - só para serviços prontos/concluídos */}
-                {selectedItem.item_type === "servico" && ["pronta", "concluido", "entregue"].includes(selectedItem.status || "pendente") && (
+                {selectedItem.item_type === "servico" && ["pronto", "concluido", "entregue"].includes(selectedItem.status || "pendente") && (
                 <div className="rounded-lg bg-green-500/10 p-3">
                   <h4 className="font-semibold text-white mb-3">ENTREGA DO EQUIPAMENTO</h4>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 mb-3">
@@ -2617,6 +2748,22 @@ export default function PedidosPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Passar para Parceiro (modo corrida) */}
+      {offerContext && (
+        <PassarParaParceiroDialog
+          open={offerDialogOpen}
+          onOpenChange={setOfferDialogOpen}
+          orderId={offerContext.orderId}
+          orderItemId={offerContext.itemId}
+          clientName={offerContext.clientName}
+          clientPhone={offerContext.clientPhone}
+          address={offerContext.address}
+          total={offerContext.total}
+          initialCategory={offerContext.category}
+          onOfferCreated={fetchOrders}
+        />
+      )}
     </div>
   );
 }

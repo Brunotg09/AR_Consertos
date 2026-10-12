@@ -5,9 +5,7 @@ import { createServerSupabase } from "@/lib/supabase-server";
 import {
   ArrowRight,
   Cpu,
-  Shield,
   ShoppingBag,
-  Users,
   Wrench
 } from "lucide-react";
 import type { Metadata } from "next";
@@ -39,27 +37,6 @@ async function getServices() {
   }
 }
 
-async function getPartnerServices() {
-  try {
-    const supabase = createServerSupabase();
-    const { data, error } = await supabase
-      .from("partner_services")
-      .select("*, partners:partner_id(name)")
-      .eq("active", true)
-      .order("sort_order", { ascending: true })
-      .limit(4);
-    if (error) {
-      return [];
-    }
-    return (data || []).map((s: any) => ({
-      ...s,
-      partner_name: s.partners?.name || null,
-    }));
-  } catch (err) {
-    return [];
-  }
-}
-
 async function getProducts() {
   try {
     const supabase = createServerSupabase();
@@ -81,9 +58,8 @@ async function getProducts() {
 export const revalidate = 60;
 
 export default async function Home() {
-  const [allServices, partnerServices, products] = await Promise.all([
+  const [allServices, products] = await Promise.all([
     getServices(),
-    getPartnerServices(),
     getProducts(),
   ]);
 
@@ -361,128 +337,6 @@ export default async function Home() {
               ))}
             </div>
           )}
-        </div>
-      </section>
-
-      {/* Seção SERVIÇOS DE PARCEIROS */}
-      <section
-        className="relative overflow-hidden"
-        style={{ backgroundColor: "#141414" }}
-      >
-        <div className="section-glow-green" />
-        <div
-          className="pointer-events-none absolute left-1/2 top-0 h-full w-full -translate-x-1/2 opacity-20"
-          style={{
-            background:
-              "radial-gradient(ellipse 50% 40% at 100% 28%, #10B981 0%, transparent 70%)",
-          }}
-        />
-        <div className="relative mx-auto max-w-full px-4 py-24 sm:px-6 lg:px-20 lg:py-32">
-          <div className="flex items-center justify-between">
-            <div className="max-w-2xl">
-              <div className="flex items-center gap-3">
-                <div
-                  className="h-px w-10 rounded"
-                  style={{ backgroundColor: "#10B981" }}
-                />
-                <span
-                  className="font-oswald text-[10px] tracking-widest uppercase"
-                  style={{ color: "#10B981" }}
-                >
-                  Rede Autorizada
-                </span>
-              </div>
-              <h2 className="mt-4 font-bebas text-5xl tracking-widest text-white sm:text-6xl lg:text-7xl">
-                PARCEIROS CERTIFICADOS
-              </h2>
-              <p
-                className="mt-4 max-w-md text-sm leading-relaxed sm:text-base"
-                style={{ color: "#a0a0a0" }}
-              >
-                Empresas autorizadas pela A.R Conserto com equipe
-                profissional certificada e garantia total em todos os serviços.
-              </p>
-            </div>
-            <Link
-              href="/servicos-parceiros"
-              className="hidden items-center gap-2 rounded-xl border border-white/10 px-5 py-3 text-sm font-medium text-white/70 transition-all hover:bg-white/[0.04] hover:text-white sm:inline-flex"
-            >
-              Ver Todos
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-
-          <div className="mt-10 flex flex-wrap gap-3">
-            <div
-              className="flex items-center gap-2 rounded-full border px-4 py-2 text-xs"
-              style={{
-                borderColor: "rgba(16, 185, 129, 0.2)",
-                color: "#34D399",
-                backgroundColor: "rgba(16, 185, 129, 0.06)",
-              }}
-            >
-              <Shield className="h-3.5 w-3.5" />
-              <span>Garantia A.R Conserto</span>
-            </div>
-            <div
-              className="flex items-center gap-2 rounded-full border px-4 py-2 text-xs"
-              style={{
-                borderColor: "rgba(16, 185, 129, 0.2)",
-                color: "#34D399",
-                backgroundColor: "rgba(16, 185, 129, 0.06)",
-              }}
-            >
-              <Users className="h-3.5 w-3.5" />
-              <span>Equipe Certificada</span>
-            </div>
-          </div>
-
-          {partnerServices.length > 0 ? (
-            <div className="mt-16 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {partnerServices.map((service) => (
-                <ServiceCard key={service.id} service={service} partner />
-              ))}
-            </div>
-          ) : (
-            <div
-              className="mt-16 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4"
-            >
-              {[1, 2, 3, 4].map((i) => (
-                <div
-                  key={i}
-                  className="flex flex-col items-center justify-center rounded-2xl py-12 text-center"
-                  style={{
-                    background: "rgba(34, 34, 34, 0.45)",
-                    border: "1px solid rgba(255,255,255,0.06)",
-                  }}
-                >
-                  <div
-                    className="h-16 w-16 rounded-full"
-                    style={{ backgroundColor: "rgba(16,185,129,0.08)" }}
-                  />
-                  <p className="mt-4 text-sm" style={{ color: "#888888" }}>
-                    Parceiro em breve
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-16 text-center">
-            <Link
-              href="/servicos-parceiros"
-              className="inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02]"
-              style={{
-                background:
-                  "linear-gradient(135deg, #10B981 0%, #059669 100%)",
-                boxShadow:
-                  "0 4px 14px rgba(16,185,129,0.35), 0 1px 2px rgba(0,0,0,0.2)",
-              }}
-            >
-              Ver Todos os Parceiros
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
         </div>
       </section>
 

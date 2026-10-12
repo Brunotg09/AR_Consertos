@@ -90,7 +90,7 @@ export default function ServicoDetailPage() {
               .select("*")
               .eq("service_id", serviceId)
               .eq("active", true)
-              .single(),
+              .maybeSingle(),
           8000,
           { data: null, error: { message: "Timeout" } }
         );
@@ -166,7 +166,7 @@ export default function ServicoDetailPage() {
                 .select("*")
                 .eq("service_id", id)
                 .eq("active", true)
-                .single(),
+                .maybeSingle(),
             8000,
             { data: null, error: { message: "Timeout" } }
           );
@@ -187,30 +187,6 @@ export default function ServicoDetailPage() {
       setLoading(false);
     }
   }, [slugKey]);
-
-  // Also try partner_services table
-  useEffect(() => {
-    if (!service && !loading && slug && slug.length > 0) {
-      const fetchPartnerService = async () => {
-        const serviceId = slug[slug.length - 1];
-        const { data } = await supabase
-          .from("partner_services")
-          .select("*, partners:partner_id(name)")
-          .eq("service_id", serviceId)
-          .eq("active", true)
-          .single();
-        if (data) {
-          setService({
-            ...data,
-            partner_id: data.partner_id,
-            partner_name: data.partners?.name || null,
-          } as ServiceData);
-          setImgError(false);
-        }
-      };
-      fetchPartnerService();
-    }
-  }, [service, loading, slug]);
 
   useEffect(() => {
     fetchService();
@@ -410,16 +386,16 @@ export default function ServicoDetailPage() {
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-xs" style={{ color: "#666666" }}>
           <Link
-            href={isPartner ? "/servicos-parceiros" : isInverter ? "/inverter" : "/servicos"}
+            href={isInverter ? "/inverter" : "/servicos"}
             className="transition-colors hover:text-white"
           >
-            {isPartner ? "Serviços Parceiros" : serviceTypeLabels[service.type]}
+            {serviceTypeLabels[service.type] || "Serviços"}
           </Link>
           {catDisplayName && (
             <>
               <span style={{ color: "#444444" }}>/</span>
               <Link
-                href={isPartner ? "/servicos-parceiros" : "/servicos"}
+                href="/servicos"
                 className="transition-colors hover:text-white"
               >
                 {catDisplayName}

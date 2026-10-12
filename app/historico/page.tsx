@@ -4,6 +4,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { generateOSPDF, generateSingleItemOSPDF, type PDFOrder, type PDFCliente } from "@/lib/generateOSPDF";
 import { supabase } from "@/lib/supabase";
 import { useFloatingWidget } from "@/components/FloatingWidget";
+import PaymentDialog from "@/components/PaymentDialog";
+import ProductPaymentModal from "@/components/checkout/ProductPaymentModal";
 import {
   AlertTriangle,
   Banknote,
@@ -41,6 +43,10 @@ interface OrderItem {
   item_product_category: string | null;
   item_product_condition: string | null;
   item_product_images: string[] | null;
+  item_rating?: number | null;
+  item_review?: string | null;
+  item_service_order_id?: string | null;
+  item_remaining_amount?: number | null;
 }
 
 interface Order {
@@ -63,6 +69,55 @@ export default function HistoricoPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterType>("todos");
+
+  // Avaliação
+  const [ratingDialogOpen, setRatingDialogOpen] = useState(false);
+  const [ratingItem, setRatingItem] = useState<OrderItem | null>(null);
+  const [ratingStars, setRatingStars] = useState(0);
+  const [ratingReview, setRatingReview] = useState("");
+  const [savingRating, setSavingRating] = useState(false);
+
+  // Pagamento
+  const [payDialogOpen, setPayDialogOpen] = useState(false);
+  const [payItem, setPayItem] = useState<OrderItem | null>(null);
+  // Pagamento de produto pendente (pedido abandonado no checkout)
+  const [payProductOrder, setPayProductOrder] = useState<{
+    orderId: string;
+    amount: number;
+  } | null>(null);
+
+  const openPayDialog = (item: OrderItem) => {
+    setPayItem(item);
+    setPayDialogOpen(true);
+  };
+
+  const openRatingDialog = (item: OrderItem) => {
+    setRatingItem(item);
+    setRatingStars(0);
+    setRatingReview("");
+    setRatingDialogOpen(true);
+  };
+
+  const submitRating = async () => {
+    if (!ratingItem || ratingStars < 1) return;
+    setSavingRating(true);
+    const { error } = await supabase.rpc("submit_service_rating", {
+      p_service_order_id: ratingItem.item_service_order_id,
+      p_rating: ratingStars,
+      p_review: ratingReview || null,
+    });
+    setSavingRating(false);
+    if (error) {
+      alert("Erro ao enviar avaliação: " + error.message);
+      return;
+    }
+    // Notificar parceiro (best-effort)
+    supabase.rpc("notify_partner_rating", {
+      p_service_order_id: ratingItem.item_service_order_id,
+    });
+    setRatingDialogOpen(false);
+    fetchOrders();
+  };
 
   useEffect(() => { trigger("help"); }, [trigger]);
   const [clienteName, setClienteName] = useState("Cliente");
@@ -203,6 +258,10 @@ export default function HistoricoPage() {
         item_product_category: row.item_product_category,
         item_product_condition: row.item_product_condition,
         item_product_images: row.item_product_images,
+        item_rating: row.item_rating,
+        item_review: row.item_review,
+        item_service_order_id: row.item_service_order_id,
+        item_remaining_amount: row.item_remaining_amount != null ? Number(row.item_remaining_amount) : null,
       });
     }
 
@@ -220,6 +279,14 @@ export default function HistoricoPage() {
   }, [orders, filter]);
 
   const handleGeneratePDF = (order: Order) => {
+    const isOrderDone = order.order_status === "concluido" || (order.items.length > 0 && order.items.every(
+      (i) => (i.item_type === "produto" ? (i.item_payment_status === "pago" || i.item_status === "concluido" || i.item_status === "entregue") : (i.item_status === "concluido" || !!i.item_completed_at))
+    ));
+    if (!isOrderDone) {
+      alert("A O.S. completa só fica disponível após a conclusão dos itens do pedido.");
+      return;
+    }
+
     const pdfOrder: PDFOrder = {
       order_id: order.order_id,
       order_status: order.order_status,
@@ -255,6 +322,15 @@ export default function HistoricoPage() {
   };
 
   const handleGenerateItemPDF = (order: Order, item: OrderItem) => {
+    const isDone = item.item_type === "produto"
+      ? (item.item_payment_status === "pago" || item.item_status === "concluido" || item.item_status === "entregue" || order.order_status === "concluido")
+      : (item.item_status === "concluido" || !!item.item_completed_at || order.order_status === "concluido");
+
+    if (!isDone) {
+      alert("A O.S. deste item só fica disponível após a conclusão.");
+      return;
+    }
+
     const pdfOrder: PDFOrder = {
       order_id: order.order_id,
       order_status: order.order_status,
@@ -305,8 +381,10 @@ export default function HistoricoPage() {
 
   const statusColors: Record<string, string> = {
     pendente: "#ffaa44",
-    confirmado: "#44dd88",
+    orcamento_enviado: "#06B6D4",
     em_andamento: "#8B5CF6",
+    pronto: "#10B981",
+    entregue: "#14B8A6",
     concluido: "#44dd88",
     cancelado: "#ff6b6b",
   };
@@ -334,8 +412,10 @@ export default function HistoricoPage() {
   const ServiceTimeline = ({ item, accent }: { item: OrderItem; accent: string }) => {
     const itemStatus = item.item_status || "pendente";
     const scheduled = !!item.item_scheduled_date;
-    const confirmed = itemStatus === "confirmado";
+    const orcamentoEnviado = itemStatus === "orcamento_enviado";
     const inProgress = itemStatus === "em_andamento";
+    const pronto = itemStatus === "pronto";
+    const entregue = itemStatus === "entregue";
     const completed = itemStatus === "concluido" || !!item.item_completed_at;
     const cancelled = itemStatus === "cancelado";
 
@@ -349,9 +429,11 @@ export default function HistoricoPage() {
     }
 
     const stages = [
-      { key: "agendado", label: "Agendado", done: scheduled || confirmed || inProgress || completed, current: scheduled && !confirmed && !inProgress && !completed },
-      { key: "confirmado", label: "Confirmado", done: confirmed || inProgress || completed, current: confirmed && !inProgress && !completed },
-      { key: "em_andamento", label: "Andamento", done: inProgress || completed, current: inProgress && !completed },
+      { key: "agendado", label: "Agendado", done: scheduled || orcamentoEnviado || inProgress || pronto || entregue || completed, current: scheduled && !orcamentoEnviado && !inProgress && !pronto && !entregue && !completed },
+      { key: "orcamento_enviado", label: "Orçamento", done: orcamentoEnviado || inProgress || pronto || entregue || completed, current: orcamentoEnviado && !inProgress && !pronto && !entregue && !completed },
+      { key: "em_andamento", label: "Andamento", done: inProgress || pronto || entregue || completed, current: inProgress && !pronto && !entregue && !completed },
+      { key: "pronto", label: "Pronto", done: pronto || entregue || completed, current: pronto && !entregue && !completed },
+      { key: "entregue", label: "Entregue", done: entregue || completed, current: entregue && !completed },
       { key: "concluido", label: "Concluído", done: completed, current: completed },
     ];
 
@@ -472,8 +554,10 @@ export default function HistoricoPage() {
 
   const statusLabels: Record<string, string> = {
     pendente: "Pendente",
-    confirmado: "Confirmado",
+    orcamento_enviado: "Orçamento Enviado",
     em_andamento: "Em Andamento",
+    pronto: "Pronto",
+    entregue: "Entregue",
     concluido: "Concluído",
     cancelado: "Cancelado",
   };
@@ -531,10 +615,31 @@ export default function HistoricoPage() {
             const totalPaid = order.items.reduce((sum, i) => sum + (i.item_amount_paid || 0), 0);
             const totalPending = order.order_total - totalPaid;
             const sc = statusColors[order.order_status] || "#888";
-            const allItemsCompleted = order.items.every(
-      (i) => i.item_type === "produto" || !!i.item_completed_at
-    );
-            const anyItemCompleted = order.items.some(i => i.item_completed_at);
+            const isItemDone = (i: OrderItem) => {
+              if (i.item_type === "produto") {
+                return (
+                  i.item_payment_status === "pago" ||
+                  i.item_status === "concluido" ||
+                  i.item_status === "entregue" ||
+                  order.order_status === "concluido"
+                );
+              }
+              return (
+                i.item_status === "concluido" ||
+                !!i.item_completed_at ||
+                order.order_status === "concluido"
+              );
+            };
+
+            const allItemsCompleted =
+              order.items.length > 0 && order.items.every(isItemDone);
+            const anyItemCompleted = order.items.some(isItemDone);
+
+            // Produtos ainda não pagos (pedido abandonado no checkout) → botão "Pagar"
+            const unpaidProductTotal = order.items
+              .filter((i) => i.item_type === "produto" && i.item_payment_status !== "pago")
+              .reduce((sum, i) => sum + (i.item_price || 0) * (i.item_quantity || 1), 0);
+            const hasUnpaidProducts = unpaidProductTotal > 0;
 
             return (
               <div
@@ -625,6 +730,27 @@ export default function HistoricoPage() {
                     )}
                   </div>
 
+                  {/* Pagar produtos pendentes (pedido abandonado no checkout) */}
+                  {hasUnpaidProducts && (
+                    <button
+                      onClick={() =>
+                        setPayProductOrder({
+                          orderId: order.order_id,
+                          amount: unpaidProductTotal,
+                        })
+                      }
+                      className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all"
+                      style={{
+                        backgroundColor: "rgba(227,6,19,0.12)",
+                        color: "#E30613",
+                        border: "1px solid rgba(227,6,19,0.25)",
+                      }}
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      Pagar produtos — {formatCurrency(unpaidProductTotal)}
+                    </button>
+                  )}
+
                   {/* Botão PDF */}
                   {allItemsCompleted ? (
                     <button
@@ -664,7 +790,11 @@ export default function HistoricoPage() {
                     if (isService) {
                       const isInv = item.item_service_type === "inverter";
                       const accent = isInv ? "#8B5CF6" : "#E30613";
-                      const completed = !!item.item_completed_at;
+                      const isServiceDone =
+                        item.item_status === "concluido" ||
+                        !!item.item_completed_at ||
+                        order.order_status === "concluido";
+                      const completed = isServiceDone;
                       const warrantyActive = isWarrantyActive(item.item_warranty_expires_at);
 
                       return (
@@ -764,19 +894,83 @@ export default function HistoricoPage() {
                                 </div>
                               )}
 
+                              {/* Saldo restante / Pagar */}
+                              {item.item_service_order_id &&
+                                item.item_remaining_amount != null &&
+                                item.item_remaining_amount > 0 && (
+                                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                                    <span className="text-[11px] font-medium text-[#F59E0B]">
+                                      Restante: {formatCurrency(item.item_remaining_amount)}
+                                    </span>
+                                    <button
+                                      onClick={() => openPayDialog(item)}
+                                      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-medium transition-all"
+                                      style={{
+                                        backgroundColor: "rgba(227,6,19,0.12)",
+                                        color: "#E30613",
+                                        border: "1px solid rgba(227,6,19,0.25)",
+                                      }}
+                                    >
+                                      <CreditCard className="h-3 w-3" />
+                                      Pagar
+                                    </button>
+                                  </div>
+                                )}
+
+                              {/* Avaliação do serviço */}
+                              {isServiceDone && (
+                                <div className="mt-2.5">
+                                  {item.item_rating ? (
+                                    <p className="text-[11px] text-[#C9A84C]">
+                                      {"⭐".repeat(item.item_rating)}
+                                      {"☆".repeat(5 - item.item_rating)} ({item.item_rating}/5)
+                                      {item.item_review && (
+                                        <span className="ml-1 text-white/50">&ldquo;{item.item_review}&rdquo;</span>
+                                      )}
+                                    </p>
+                                  ) : (
+                                    <button
+                                      onClick={() => openRatingDialog(item)}
+                                      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-medium transition-all"
+                                      style={{
+                                        backgroundColor: "rgba(201,168,76,0.1)",
+                                        color: "#C9A84C",
+                                        border: "1px solid rgba(201,168,76,0.25)",
+                                      }}
+                                    >
+                                      ⭐ Avaliar Serviço
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+
                               {/* O.S. individual */}
-                              <button
-                                onClick={() => handleGenerateItemPDF(order, item)}
-                                className="mt-2.5 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-medium transition-all"
-                                style={{
-                                  backgroundColor: `${accent}10`,
-                                  color: accent,
-                                  border: `1px solid ${accent}20`,
-                                }}
-                              >
-                                <FileText className="h-3 w-3" />
-                                Gerar O.S. deste item
-                              </button>
+                              {isServiceDone ? (
+                                <button
+                                  onClick={() => handleGenerateItemPDF(order, item)}
+                                  className="mt-2.5 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-medium transition-all"
+                                  style={{
+                                    backgroundColor: `${accent}10`,
+                                    color: accent,
+                                    border: `1px solid ${accent}20`,
+                                  }}
+                                >
+                                  <FileText className="h-3 w-3" />
+                                  Gerar O.S. deste item
+                                </button>
+                              ) : (
+                                <div
+                                  className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px]"
+                                  style={{
+                                    backgroundColor: "rgba(255,255,255,0.02)",
+                                    color: "#666",
+                                    border: "1px solid rgba(255,255,255,0.05)",
+                                  }}
+                                >
+                                  <Clock className="h-3 w-3" />
+                                  <span>O.S. disponível após conclusão do serviço</span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -784,6 +978,12 @@ export default function HistoricoPage() {
                     }
 
                     // Produto
+                    const isProductDone =
+                      item.item_payment_status === "pago" ||
+                      item.item_status === "concluido" ||
+                      item.item_status === "entregue" ||
+                      order.order_status === "concluido";
+
                     return (
                       <div
                         key={item.item_id}
@@ -832,18 +1032,32 @@ export default function HistoricoPage() {
                           )}
                         </div>
                         {/* O.S. individual produto */}
-                        <button
-                          onClick={() => handleGenerateItemPDF(order, item)}
-                          className="mt-2.5 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-medium transition-all"
-                          style={{
-                            backgroundColor: "rgba(201,168,76,0.08)",
-                            color: "#C9A84C",
-                            border: "1px solid rgba(201,168,76,0.15)",
-                          }}
-                        >
-                          <FileText className="h-3 w-3" />
-                          Gerar O.S. deste item
-                        </button>
+                        {isProductDone ? (
+                          <button
+                            onClick={() => handleGenerateItemPDF(order, item)}
+                            className="mt-2.5 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-medium transition-all"
+                            style={{
+                              backgroundColor: "rgba(201,168,76,0.08)",
+                              color: "#C9A84C",
+                              border: "1px solid rgba(201,168,76,0.15)",
+                            }}
+                          >
+                            <FileText className="h-3 w-3" />
+                            Gerar O.S. deste item
+                          </button>
+                        ) : (
+                          <div
+                            className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px]"
+                            style={{
+                              backgroundColor: "rgba(255,255,255,0.02)",
+                              color: "#666",
+                              border: "1px solid rgba(255,255,255,0.05)",
+                            }}
+                          >
+                            <Clock className="h-3 w-3" />
+                            <span>Comprovante disponível após conclusão/pagamento</span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -851,6 +1065,91 @@ export default function HistoricoPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Modal de Pagamento */}
+      {payDialogOpen && payItem && (
+        <PaymentDialog
+          open={payDialogOpen}
+          onOpenChange={setPayDialogOpen}
+          serviceOrderId={payItem.item_service_order_id!}
+          serviceName={payItem.item_name}
+          remainingAmount={payItem.item_remaining_amount || 0}
+          onPaid={() => {
+            setPayDialogOpen(false);
+            fetchOrders();
+          }}
+        />
+      )}
+
+      {/* Modal de Pagamento de Produto (pedido pendente) */}
+      {payProductOrder && (
+        <ProductPaymentModal
+          open
+          onOpenChange={(v) => {
+            if (!v) setPayProductOrder(null);
+          }}
+          orderId={payProductOrder.orderId}
+          amount={payProductOrder.amount}
+          initialMethod="pix"
+          onComplete={() => {
+            setPayProductOrder(null);
+            fetchOrders();
+          }}
+        />
+      )}
+
+      {/* Modal de Avaliação */}
+      {ratingDialogOpen && ratingItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div
+            className="w-full max-w-md rounded-2xl p-6"
+            style={{
+              background: "linear-gradient(135deg, #141414 0%, #0d0d0d 100%)",
+              border: "1px solid rgba(201,168,76,0.2)",
+            }}
+          >
+            <h3 className="font-bebas text-2xl tracking-wide text-white">Avaliar Serviço</h3>
+            <p className="mt-1 text-sm text-white/50">{ratingItem.item_name}</p>
+
+            <div className="my-5 flex justify-center gap-2">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setRatingStars(s)}
+                  className="text-3xl transition-transform hover:scale-110"
+                  style={{ color: s <= ratingStars ? "#C9A84C" : "#333" }}
+                >
+                  {s <= ratingStars ? "★" : "☆"}
+                </button>
+              ))}
+            </div>
+
+            <textarea
+              value={ratingReview}
+              onChange={(e) => setRatingReview(e.target.value)}
+              rows={3}
+              placeholder="Comentário (opcional)..."
+              className="w-full rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm text-white placeholder:text-white/30 focus:border-[#C9A84C] focus:outline-none"
+            />
+
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                onClick={() => setRatingDialogOpen(false)}
+                className="rounded-xl border border-white/10 px-4 py-2 text-sm text-white/60"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={submitRating}
+                disabled={savingRating || ratingStars < 1}
+                className="btn-premium-red disabled:opacity-50"
+              >
+                {savingRating ? "Enviando..." : "Enviar Avaliação"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

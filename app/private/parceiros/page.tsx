@@ -6,18 +6,12 @@ import {
   Plus,
   Search,
   Edit,
-  Trash2,
-  Building2,
-  Mail,
-  Phone,
-  MapPin,
-  FileText,
   Users,
-  UserPlus,
-  X,
-  Wrench,
+  UserCircle2,
+  Star,
+  Loader2,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { supabase, withTimeout } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,79 +33,73 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { maskCPF, maskPhone, validaCPF, CATEGORY_OPTIONS, PARTNER_CATEGORIES, maskCPFDisplay, maskCEP, fetchAddressByCep } from "@/lib/partner-utils";
+import { cn } from "@/lib/utils";
+import { compressImageToWebP } from "@/lib/imageUtils";
 
 interface Partner {
   id: string;
-  name: string;
-  cnpj: string;
+  user_id: string | null;
+  full_name: string;
+  cpf: string;
   email: string;
-  phone: string | null;
-  address: { rua?: string; numero?: string; bairro?: string; cidade?: string; estado?: string; cep?: string } | null;
+  phone: string;
+  photo_url: string | null;
+  categories: string[];
+  bio: string | null;
+  experience_years: number | null;
+  address_street: string | null;
+  address_number: string | null;
+  address_neighborhood: string | null;
+  address_city: string | null;
+  address_state: string | null;
+  address_zipcode: string | null;
+  average_rating: number | null;
+  total_ratings: number;
   active: boolean;
   notes: string | null;
   created_at: string;
-  tech_count?: number;
 }
+
+const emptyForm = {
+  full_name: "",
+  cpf: "",
+  email: "",
+  phone: "",
+  photo_url: "",
+  categories: [] as string[],
+  bio: "",
+  experience_years: "",
+  address_street: "",
+  address_number: "",
+  address_neighborhood: "",
+  address_city: "",
+  address_state: "",
+  address_zipcode: "",
+  notes: "",
+  login_email: "",
+};
 
 export default function ParceirosPage() {
   const [partners, setPartners] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null);
   const [saving, setSaving] = useState(false);
-
-  const [formData, setFormData] = useState({
-    name: "",
-    cnpj: "",
-    email: "",
-    phone: "",
-    rua: "",
-    numero: "",
-    bairro: "",
-    cidade: "",
-    estado: "",
-    cep: "",
-    notes: "",
-  });
-
-  // Tech states
-  const [techDialogOpen, setTechDialogOpen] = useState(false);
-  const [selectedPartnerForTech, setSelectedPartnerForTech] = useState<Partner | null>(null);
-  const [technicians, setTechnicians] = useState<any[]>([]);
-  const [loadingTechs, setLoadingTechs] = useState(false);
-  const [techForm, setTechForm] = useState({ cpf: "" });
-  const [savingTech, setSavingTech] = useState(false);
-  const [userSearch, setUserSearch] = useState("");
-  const [userSearchResults, setUserSearchResults] = useState<any[]>([]);
-  const [searchingUsers, setSearchingUsers] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [formData, setFormData] = useState(emptyForm);
 
   const fetchPartners = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from("partners")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      // Fetch tech count for each partner
-      const partnersWithCount = await Promise.all(
-        (data || []).map(async (p) => {
-          const { count } = await supabase
-            .from("partner_technicians")
-            .select("*", { count: "exact", head: true })
-            .eq("partner_id", p.id);
-          return { ...p, tech_count: count || 0 };
-        })
+      const data = await withTimeout(
+        () => supabase.from("partners").select("*").order("full_name"),
+        5000,
+        null
       );
-
-      setPartners(partnersWithCount);
-    } catch (error) {
+      setPartners(data?.data || []);
     } finally {
       setLoading(false);
     }
@@ -121,728 +109,560 @@ export default function ParceirosPage() {
     fetchPartners();
   }, [fetchPartners]);
 
-  const filteredPartners = partners.filter(
+  const filtered = partners.filter(
     (p) =>
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.cnpj.includes(search) ||
-      p.email.toLowerCase().includes(search.toLowerCase())
+      (!categoryFilter || (p.categories || []).includes(categoryFilter)) &&
+      (p.full_name.toLowerCase().includes(search.toLowerCase()) ||
+        p.email.toLowerCase().includes(search.toLowerCase()) ||
+        p.cpf.includes(search))
   );
 
-  const resetForm = () => {
-    setFormData({
-      name: "",
-      cnpj: "",
-      email: "",
-      phone: "",
-      rua: "",
-      numero: "",
-      bairro: "",
-      cidade: "",
-      estado: "",
-      cep: "",
-      notes: "",
-    });
+  const openCreate = () => {
     setSelectedPartner(null);
-  };
-
-  const fetchTechnicians = useCallback(async (partnerId: string) => {
-    setLoadingTechs(true);
-    try {
-      const { data, error } = await supabase
-        .from("partner_technicians")
-        .select("*, profiles:user_id(full_name, user_private:user_private(email))")
-        .eq("partner_id", partnerId);
-
-      if (error) throw error;
-      setTechnicians(data || []);
-    } catch (error) {
-    } finally {
-      setLoadingTechs(false);
-    }
-  }, []);
-
-  const openTechDialog = (partner: Partner) => {
-    setSelectedPartnerForTech(partner);
-    setTechForm({ cpf: "" });
-    setUserSearch("");
-    setUserSearchResults([]);
-    setSelectedUser(null);
-    setTechDialogOpen(true);
-    fetchTechnicians(partner.id);
-  };
-
-  const searchUsers = async (query: string) => {
-    if (query.length < 2) {
-      setUserSearchResults([]);
-      return;
-    }
-    setSearchingUsers(true);
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, full_name, user_private:user_private(email)")
-        .ilike("full_name", `%${query}%`)
-        .limit(10);
-
-      if (error) throw error;
-      setUserSearchResults(data || []);
-    } catch (error) {
-    } finally {
-      setSearchingUsers(false);
-    }
-  };
-
-  const handleAddTech = async () => {
-    if (!selectedPartnerForTech || !selectedUser) return;
-    if (!techForm.cpf) {
-      toast.error("Informe o CPF do técnico.");
-      return;
-    }
-
-    setSavingTech(true);
-    try {
-      const { error } = await supabase.from("partner_technicians").insert({
-        partner_id: selectedPartnerForTech.id,
-        user_id: selectedUser.id,
-        cpf: techForm.cpf.replace(/\D/g, ""),
-      });
-
-      if (error) throw error;
-
-      toast.success("Técnico adicionado com sucesso!");
-      setTechForm({ cpf: "" });
-      setSelectedUser(null);
-      setUserSearch("");
-      setUserSearchResults([]);
-      fetchTechnicians(selectedPartnerForTech.id);
-      fetchPartners();
-    } catch (error: any) {
-      if (error.code === "23505") {
-        toast.error("Este técnico já está vinculado a este parceiro.");
-      } else {
-        toast.error(error.message || "Erro ao adicionar técnico.");
-      }
-    } finally {
-      setSavingTech(false);
-    }
-  };
-
-  const handleRemoveTech = async (techId: string) => {
-    if (!selectedPartnerForTech) return;
-    try {
-      const { error } = await supabase
-        .from("partner_technicians")
-        .delete()
-        .eq("id", techId);
-
-      if (error) throw error;
-      toast.success("Técnico removido!");
-      fetchTechnicians(selectedPartnerForTech.id);
-      fetchPartners();
-    } catch (error: any) {
-      toast.error(error.message || "Erro ao remover técnico.");
-    }
-  };
-
-  const openCreateDialog = () => {
-    resetForm();
+    setFormData(emptyForm);
     setDialogOpen(true);
   };
 
-  const openEditDialog = (partner: Partner) => {
-    setSelectedPartner(partner);
+  const openEdit = (p: Partner) => {
+    setSelectedPartner(p);
     setFormData({
-      name: partner.name,
-      cnpj: partner.cnpj,
-      email: partner.email,
-      phone: partner.phone || "",
-      rua: partner.address?.rua || "",
-      numero: partner.address?.numero || "",
-      bairro: partner.address?.bairro || "",
-      cidade: partner.address?.cidade || "",
-      estado: partner.address?.estado || "",
-      cep: partner.address?.cep || "",
-      notes: partner.notes || "",
+      full_name: p.full_name,
+      cpf: p.cpf,
+      email: p.email,
+      phone: p.phone,
+      photo_url: p.photo_url || "",
+      categories: p.categories || [],
+      bio: p.bio || "",
+      experience_years: p.experience_years?.toString() || "",
+      address_street: p.address_street || "",
+      address_number: p.address_number || "",
+      address_neighborhood: p.address_neighborhood || "",
+      address_city: p.address_city || "",
+      address_state: p.address_state || "",
+      address_zipcode: p.address_zipcode || "",
+      notes: p.notes || "",
+      login_email: "",
     });
     setDialogOpen(true);
   };
 
-  const openDeleteDialog = (partner: Partner) => {
-    setSelectedPartner(partner);
-    setDeleteDialogOpen(true);
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      const compressed = await compressImageToWebP(file, 150, 600, 600);
+      const path = `partners/${Date.now()}-${compressed.name}`;
+      const { error } = await supabase.storage
+        .from("service-order-photos")
+        .upload(path, compressed);
+      if (error) throw error;
+      const { data } = supabase.storage.from("service-order-photos").getPublicUrl(path);
+      setFormData((f) => ({ ...f, photo_url: data.publicUrl }));
+      toast.success("Foto enviada");
+    } catch {
+      toast.error("Erro ao enviar foto");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const toggleCategory = (cat: string) => {
+    setFormData((f) => ({
+      ...f,
+      categories: f.categories.includes(cat)
+        ? f.categories.filter((c) => c !== cat)
+        : [...f.categories, cat],
+    }));
+  };
+
+  const handleCepBlur = async () => {
+    const cep = formData.address_zipcode.replace(/\D/g, "");
+    if (cep.length !== 8) return;
+    const addr = await fetchAddressByCep(cep);
+    if (!addr) return;
+    setFormData((f) => ({
+      ...f,
+      address_street: f.address_street || addr.logradouro,
+      address_neighborhood: f.address_neighborhood || addr.bairro,
+      address_city: f.address_city || addr.localidade,
+      address_state: f.address_state || addr.uf,
+    }));
   };
 
   const handleSave = async () => {
-    if (!formData.name || !formData.cnpj || !formData.email) {
-      toast.error("Preencha nome, CNPJ e email.");
-      return;
-    }
+    // Validações
+    if (!formData.full_name.trim()) return toast.error("Nome é obrigatório");
+    if (!validaCPF(formData.cpf)) return toast.error("CPF inválido");
+    if (!formData.email.trim()) return toast.error("Email é obrigatório");
+    if (!formData.phone.trim()) return toast.error("Telefone é obrigatório");
+    if (formData.categories.length === 0) return toast.error("Selecione ao menos 1 categoria");
 
     setSaving(true);
-
-    const address = {
-      rua: formData.rua || null,
-      numero: formData.numero || null,
-      bairro: formData.bairro || null,
-      cidade: formData.cidade || null,
-      estado: formData.estado || null,
-      cep: formData.cep || null,
-    };
-
     try {
+      // Resolver vínculo de login (email → auth user id)
+      let userId: string | null = selectedPartner?.user_id || null;
+      const loginEmail = formData.login_email.trim().toLowerCase();
+      if (loginEmail) {
+        const { data: uid, error: uidError } = await withTimeout(
+          () => supabase.rpc("find_user_id_by_email", { p_email: loginEmail }),
+          5000,
+          { data: null, error: new Error("Timeout") }
+        );
+        if (uidError) throw uidError;
+        if (!uid) {
+          toast.error(`Nenhum usuário cadastrado com o email "${loginEmail}". Cadastre o login primeiro.`);
+          setSaving(false);
+          return;
+        }
+        userId = uid as string;
+      }
+
+      // Foto opcional: se vazia e tem vínculo, puxa avatar do perfil
+      let photoUrl = formData.photo_url;
+      if (!photoUrl && userId) {
+        const { data: profile } = await withTimeout(
+          () => supabase.from("profiles").select("avatar_url").eq("id", userId).maybeSingle(),
+          5000,
+          { data: null, error: null }
+        );
+        photoUrl = profile?.avatar_url || "";
+      }
+
+      const payload = {
+        full_name: formData.full_name.trim(),
+        cpf: formData.cpf,
+        email: formData.email.trim().toLowerCase(),
+        phone: formData.phone,
+        photo_url: photoUrl,
+        categories: formData.categories,
+        bio: formData.bio || null,
+        experience_years: formData.experience_years ? parseInt(formData.experience_years) : null,
+        address_street: formData.address_street || null,
+        address_number: formData.address_number || null,
+        address_neighborhood: formData.address_neighborhood || null,
+        address_city: formData.address_city || null,
+        address_state: formData.address_state || null,
+        address_zipcode: formData.address_zipcode || null,
+        notes: formData.notes || null,
+        user_id: userId,
+      };
+
       if (selectedPartner) {
-        // Update
-        const { error } = await supabase
-          .from("partners")
-          .update({
-            name: formData.name,
-            cnpj: formData.cnpj,
-            email: formData.email,
-            phone: formData.phone || null,
-            address,
-            notes: formData.notes || null,
-          })
-          .eq("id", selectedPartner.id);
-
+        const { error } = await withTimeout(
+          () => supabase.from("partners").update(payload).eq("id", selectedPartner.id),
+          8000,
+          { error: new Error("Timeout") }
+        );
         if (error) throw error;
-        toast.success("Parceiro atualizado com sucesso!");
+        toast.success("Parceiro atualizado!");
       } else {
-        // Create
-        const { error } = await supabase.from("partners").insert({
-          name: formData.name,
-          cnpj: formData.cnpj,
-          email: formData.email,
-          phone: formData.phone || null,
-          address,
-          notes: formData.notes || null,
-        });
+        // Verificar CPF/email únicos
+        const { data: existing } = await withTimeout(
+          () =>
+            supabase
+              .from("partners")
+              .select("id")
+              .or(`cpf.eq.${formData.cpf},email.eq.${payload.email}`)
+              .maybeSingle(),
+          5000,
+          null
+        );
+        if (existing) {
+          toast.error("CPF ou email já cadastrado");
+          return;
+        }
 
+        const { error } = await withTimeout(
+          () => supabase.from("partners").insert(payload),
+          8000,
+          { error: new Error("Timeout") }
+        );
         if (error) throw error;
-        toast.success("Parceiro criado com sucesso!");
+        toast.success("Parceiro cadastrado!");
       }
 
       setDialogOpen(false);
-      resetForm();
       fetchPartners();
-    } catch (error: any) {
-      toast.error(error.message || "Erro ao salvar parceiro.");
+    } catch (err) {
+      toast.error(selectedPartner ? "Erro ao atualizar" : "Erro ao cadastrar");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async () => {
+  const handleDeactivate = async () => {
     if (!selectedPartner) return;
-
-    try {
-      const { error } = await supabase
-        .from("partners")
-        .delete()
-        .eq("id", selectedPartner.id);
-
-      if (error) throw error;
-      toast.success("Parceiro removido com sucesso!");
-      setDeleteDialogOpen(false);
-      setSelectedPartner(null);
-      fetchPartners();
-    } catch (error: any) {
-      toast.error(error.message || "Erro ao remover parceiro.");
+    setSaving(true);
+    const { error } = await withTimeout(
+      () =>
+        supabase
+          .from("partners")
+          .update({ active: !selectedPartner.active })
+          .eq("id", selectedPartner.id),
+      8000,
+      { error: new Error("Timeout") }
+    );
+    setSaving(false);
+    setDeleteDialogOpen(false);
+    if (error) {
+      toast.error("Erro ao atualizar status");
+      return;
     }
-  };
-
-  const toggleActive = async (partner: Partner) => {
-    try {
-      const { error } = await supabase
-        .from("partners")
-        .update({ active: !partner.active })
-        .eq("id", partner.id);
-
-      if (error) throw error;
-      toast.success(partner.active ? "Parceiro desativado." : "Parceiro ativado.");
-      fetchPartners();
-    } catch (error: any) {
-      toast.error(error.message || "Erro ao alterar status.");
-    }
-  };
-
-  const formatCnpj = (value: string) => {
-    const nums = value.replace(/\D/g, "").slice(0, 14);
-    return nums
-      .replace(/^(\d{2})(\d)/, "$1.$2")
-      .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
-      .replace(/\.(\d{3})(\d)/, ".$1/$2")
-      .replace(/\/(\d{4})(\d)/, "$1-$2");
+    toast.success(selectedPartner.active ? "Parceiro desativado" : "Parceiro reativado");
+    fetchPartners();
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#E30613] border-t-transparent" />
+      <div className="flex justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-[#C9A84C]" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-bebas text-3xl tracking-wide text-white">
-            PARCEIROS
-          </h1>
-          <p className="text-sm text-white/50">
-            Gerencie as empresas terceirizadas parceiras
-          </p>
-        </div>
-        <Button onClick={openCreateDialog} className="bg-[#E30613] hover:bg-[#E30613]/90">
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Parceiro
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="font-bebas text-4xl tracking-wide text-white">
+          Parceiros ({partners.length})
+        </h1>
+        <Button onClick={openCreate} className="btn-premium-red">
+          <Plus className="mr-2 h-4 w-4" /> Novo Parceiro
         </Button>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-        <Input
-          placeholder="Buscar por nome, CNPJ ou email..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-10 border-white/10 bg-white/[0.03] text-white placeholder:text-white/30"
-        />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative max-w-md flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+          <Input
+            placeholder="Buscar por nome, email ou CPF..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white outline-none [&_option]:bg-[#1a1a1a] [&_option]:text-white"
+          style={{ colorScheme: "dark" }}
+        >
+          <option value="">Todas as categorias</option>
+          {PARTNER_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#E30613]/10">
-              <Building2 className="h-5 w-5 text-[#E30613]" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white">{partners.length}</p>
-              <p className="text-xs text-white/50">Total de Parceiros</p>
-            </div>
-          </div>
+      {filtered.length === 0 ? (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] py-16 text-center text-white/40">
+          Nenhum parceiro encontrado.
         </div>
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#22c55e]/10">
-              <Building2 className="h-5 w-5 text-[#22c55e]" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white">
-                {partners.filter((p) => p.active).length}
-              </p>
-              <p className="text-xs text-white/50">Ativos</p>
-            </div>
-          </div>
-        </div>
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#8B5CF6]/10">
-              <Users className="h-5 w-5 text-[#8B5CF6]" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white">
-                {partners.reduce((acc, p) => acc + (p.tech_count || 0), 0)}
-              </p>
-              <p className="text-xs text-white/50">Técnicos Total</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.02]">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-white/[0.06]">
-                <th className="px-4 py-3 text-left text-xs font-medium text-white/50">Empresa</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-white/50">CNPJ</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-white/50">Contato</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-white/50">Técnicos</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-white/50">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-white/50">Criado em</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-white/50">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPartners.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-white/30">
-                    Nenhum parceiro encontrado.
-                  </td>
-                </tr>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          {filtered.map((p) => (
+            <div
+              key={p.id}
+              className="flex items-start gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-5"
+            >
+              {p.photo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={p.photo_url}
+                  alt={p.full_name}
+                  className="h-16 w-16 rounded-full object-cover"
+                />
               ) : (
-                filteredPartners.map((partner) => (
-                  <tr
-                    key={partner.id}
-                    className="border-b border-white/[0.03] transition-colors hover:bg-white/[0.02]"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#E30613]/10">
-                          <Building2 className="h-4 w-4 text-[#E30613]" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-white">{partner.name}</p>
-                          {partner.notes && (
-                            <p className="text-xs text-white/40 truncate max-w-[200px]">{partner.notes}</p>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-sm text-white/70">{partner.cnpj}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1.5 text-xs text-white/60">
-                          <Mail className="h-3 w-3" />
-                          {partner.email}
-                        </div>
-                        {partner.phone && (
-                          <div className="flex items-center gap-1.5 text-xs text-white/60">
-                            <Phone className="h-3 w-3" />
-                            {partner.phone}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[#8B5CF6]/10 px-2 py-0.5 text-xs font-medium text-[#8B5CF6]">
-                        <Users className="h-3 w-3" />
-                        {partner.tech_count || 0}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => toggleActive(partner)}
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${
-                          partner.active
-                            ? "bg-[#22c55e]/10 text-[#22c55e] hover:bg-[#22c55e]/20"
-                            : "bg-white/5 text-white/40 hover:bg-white/10"
-                        }`}
-                      >
-                        <div className={`h-1.5 w-1.5 rounded-full ${partner.active ? "bg-[#22c55e]" : "bg-white/40"}`} />
-                        {partner.active ? "Ativo" : "Inativo"}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs text-white/40">
-                        {format(new Date(partner.created_at), "dd/MM/yyyy", { locale: ptBR })}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <Link
-                          href={`/private/parceiros/${partner.id}`}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-[#3B82F6]/10 px-3 py-1.5 text-xs font-medium text-[#3B82F6] transition-colors hover:bg-[#3B82F6]/20"
-                        >
-                          Painel
-                        </Link>
-                        <button
-                          onClick={() => openDeleteDialog(partner)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-white/40 transition-colors hover:bg-[#E30613]/10 hover:text-[#E30613]"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/5">
+                  <UserCircle2 className="h-8 w-8 text-white/30" />
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
-      {/* Create/Edit Dialog */}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="truncate font-medium text-white">{p.full_name}</p>
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                      p.active ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
+                    )}
+                  >
+                    {p.active ? "Ativo" : "Inativo"}
+                  </span>
+                </div>
+                <p className="text-xs text-white/40">CPF: {maskCPFDisplay(p.cpf)}</p>
+                <p className="mt-1 text-xs text-white/50">{(p.categories || []).join(", ")}</p>
+                {p.average_rating != null && p.total_ratings > 0 && (
+                  <p className="mt-1 flex items-center gap-1 text-xs text-[#C9A84C]">
+                    <Star className="h-3 w-3 fill-current" />
+                    {p.average_rating} ({p.total_ratings})
+                  </p>
+                )}
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => openEdit(p)}
+                    className="text-xs"
+                  >
+                    <Edit className="mr-1 h-3 w-3" /> Editar
+                  </Button>
+                  <Link href={`/private/parceiros/${p.id}`}>
+                    <Button size="sm" variant="outline" className="text-xs">
+                      <Users className="mr-1 h-3 w-3" /> Painel
+                    </Button>
+                  </Link>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedPartner(p);
+                      setDeleteDialogOpen(true);
+                    }}
+                    className={cn(
+                      "text-xs",
+                      p.active ? "text-red-400" : "text-green-400"
+                    )}
+                  >
+                    {p.active ? "Desativar" : "Reativar"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Dialog criar/editar */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl border-white/[0.06] bg-[#0f0f0f]">
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-white">
-              {selectedPartner ? "Editar Parceiro" : "Novo Parceiro"}
-            </DialogTitle>
+            <DialogTitle>{selectedPartner ? "Editar Parceiro" : "Novo Parceiro"}</DialogTitle>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label className="text-white/70">Nome da Empresa *</Label>
+          <div className="space-y-4">
+            {/* Foto */}
+            <div className="flex items-center gap-4">
+              {formData.photo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={formData.photo_url}
+                  alt="Foto"
+                  className="h-20 w-20 rounded-full object-cover"
+                />
+              ) : (
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/5">
+                  <UserCircle2 className="h-10 w-10 text-white/30" />
+                </div>
+              )}
+              <label className="cursor-pointer text-sm text-[#C9A84C] hover:underline">
+                {uploadingPhoto ? "Enviando..." : "Enviar foto (opcional)"}
+                <input type="file" accept="image/*" hidden onChange={handlePhotoUpload} />
+              </label>
+            </div>
+
+            <div>
+              <Label>Nome completo *</Label>
               <Input
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Razão Social"
-                className="border-white/10 bg-white/[0.03] text-white"
+                value={formData.full_name}
+                onChange={(e) => setFormData((f) => ({ ...f, full_name: e.target.value }))}
+                placeholder="Nome do profissional"
               />
             </div>
-            <div className="space-y-2">
-              <Label className="text-white/70">CNPJ *</Label>
-              <Input
-                value={formData.cnpj}
-                onChange={(e) => setFormData({ ...formData, cnpj: formatCnpj(e.target.value) })}
-                placeholder="00.000.000/0000-00"
-                maxLength={18}
-                className="border-white/10 bg-white/[0.03] text-white"
-              />
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label>CPF *</Label>
+                <Input
+                  value={formData.cpf}
+                  onChange={(e) => setFormData((f) => ({ ...f, cpf: maskCPF(e.target.value) }))}
+                  placeholder="000.000.000-00"
+                  maxLength={14}
+                />
+              </div>
+              <div>
+                <Label>Telefone / WhatsApp *</Label>
+                <Input
+                  value={formData.phone}
+                  onChange={(e) => setFormData((f) => ({ ...f, phone: maskPhone(e.target.value) }))}
+                  placeholder="(00) 00000-0000"
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label className="text-white/70">Email *</Label>
+
+            <div>
+              <Label>Email *</Label>
               <Input
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="contato@empresa.com"
-                className="border-white/10 bg-white/[0.03] text-white"
+                onChange={(e) => setFormData((f) => ({ ...f, email: e.target.value }))}
+                placeholder="email@exemplo.com"
               />
             </div>
-            <div className="space-y-2">
-              <Label className="text-white/70">Telefone / WhatsApp</Label>
+
+            {/* Categorias */}
+            <div>
+              <Label>Categorias que atende *</Label>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {CATEGORY_OPTIONS.map((c) => (
+                  <button
+                    key={c.value}
+                    type="button"
+                    onClick={() => toggleCategory(c.value)}
+                    className={cn(
+                      "rounded-xl border px-3 py-1.5 text-xs font-medium transition-colors",
+                      formData.categories.includes(c.value)
+                        ? "border-[#C9A84C] bg-[#C9A84C]/10 text-[#C9A84C]"
+                        : "border-white/10 text-white/50 hover:border-white/20"
+                    )}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label>Anos de experiência</Label>
               <Input
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="(00) 00000-0000"
-                className="border-white/10 bg-white/[0.03] text-white"
+                type="number"
+                value={formData.experience_years}
+                onChange={(e) => setFormData((f) => ({ ...f, experience_years: e.target.value }))}
               />
             </div>
-            <div className="space-y-2">
-              <Label className="text-white/70">Rua / Logradouro</Label>
+
+            <div>
+              <Label>Endereço</Label>
+              <div className="grid gap-3 sm:grid-cols-4">
+                <div className="sm:col-span-2">
+                  <Input
+                    value={formData.address_zipcode}
+                    onChange={(e) => setFormData((f) => ({ ...f, address_zipcode: maskCEP(e.target.value) }))}
+                    onBlur={handleCepBlur}
+                    placeholder="CEP (00000-000)"
+                    maxLength={9}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Input
+                    value={formData.address_street}
+                    onChange={(e) => setFormData((f) => ({ ...f, address_street: e.target.value }))}
+                    placeholder="Rua"
+                  />
+                </div>
+                <div>
+                  <Input
+                    value={formData.address_number}
+                    onChange={(e) => setFormData((f) => ({ ...f, address_number: e.target.value }))}
+                    placeholder="Número"
+                  />
+                </div>
+                <div>
+                  <Input
+                    value={formData.address_neighborhood}
+                    onChange={(e) =>
+                      setFormData((f) => ({ ...f, address_neighborhood: e.target.value }))
+                    }
+                    placeholder="Bairro"
+                  />
+                </div>
+                <div>
+                  <Input
+                    value={formData.address_city}
+                    onChange={(e) => setFormData((f) => ({ ...f, address_city: e.target.value }))}
+                    placeholder="Cidade"
+                  />
+                </div>
+                <div>
+                  <Input
+                    maxLength={2}
+                    value={formData.address_state}
+                    onChange={(e) =>
+                      setFormData((f) => ({ ...f, address_state: e.target.value.toUpperCase() }))
+                    }
+                    placeholder="UF"
+                  />
+                </div>
+              </div>
+              <p className="mt-1 text-[11px] text-white/40">
+                Preencha o CEP e saia do campo — rua, bairro, cidade e UF são preenchidos automaticamente.
+              </p>
+            </div>
+
+            <div>
+              <Label>Bio</Label>
+              <textarea
+                rows={2}
+                value={formData.bio}
+                onChange={(e) => setFormData((f) => ({ ...f, bio: e.target.value }))}
+                className="w-full rounded-md border border-white/10 bg-transparent px-3 py-2 text-sm text-white focus:border-[#C9A84C] focus:outline-none"
+                placeholder="Breve descrição do profissional..."
+              />
+            </div>
+
+            <div>
+              <Label>
+                Email do login (vínculo ao painel do parceiro)
+                {selectedPartner?.user_id && (
+                  <span className="ml-2 text-[11px] font-normal text-[#22c55e]">✓ vinculado</span>
+                )}
+              </Label>
               <Input
-                value={formData.rua}
-                onChange={(e) => setFormData({ ...formData, rua: e.target.value })}
-                placeholder="Rua Exemplo"
-                className="border-white/10 bg-white/[0.03] text-white"
+                type="email"
+                value={formData.login_email}
+                onChange={(e) => setFormData((f) => ({ ...f, login_email: e.target.value }))}
+                placeholder={selectedPartner?.user_id ? "Deixe vazio para manter o vínculo atual" : "email@do-parceiro.com (deve ter cadastro no site)"}
               />
+              <p className="mt-1 text-[11px] text-white/40">
+                O parceiro precisa ter uma conta cadastrada no site. Com esse email ele loga e acessa /parceiro.
+              </p>
             </div>
-            <div className="space-y-2">
-              <Label className="text-white/70">Número</Label>
-              <Input
-                value={formData.numero}
-                onChange={(e) => setFormData({ ...formData, numero: e.target.value })}
-                placeholder="123"
-                className="border-white/10 bg-white/[0.03] text-white"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-white/70">Bairro</Label>
-              <Input
-                value={formData.bairro}
-                onChange={(e) => setFormData({ ...formData, bairro: e.target.value })}
-                placeholder="Centro"
-                className="border-white/10 bg-white/[0.03] text-white"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-white/70">Cidade</Label>
-              <Input
-                value={formData.cidade}
-                onChange={(e) => setFormData({ ...formData, cidade: e.target.value })}
-                placeholder="São Paulo"
-                className="border-white/10 bg-white/[0.03] text-white"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-white/70">Estado</Label>
-              <Input
-                value={formData.estado}
-                onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-                placeholder="SP"
-                maxLength={2}
-                className="border-white/10 bg-white/[0.03] text-white"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-white/70">CEP</Label>
-              <Input
-                value={formData.cep}
-                onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
-                placeholder="00000-000"
-                className="border-white/10 bg-white/[0.03] text-white"
-              />
-            </div>
-            <div className="col-span-full space-y-2">
-              <Label className="text-white/70">Observações</Label>
+
+            <div>
+              <Label>Observações internas</Label>
               <Input
                 value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Notas internas sobre o parceiro"
-                className="border-white/10 bg-white/[0.03] text-white"
+                onChange={(e) => setFormData((f) => ({ ...f, notes: e.target.value }))}
               />
             </div>
           </div>
 
           <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() => setDialogOpen(false)}
-              className="text-white/60 hover:text-white"
-            >
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button
-              onClick={handleSave}
-              disabled={saving}
-              className="bg-[#E30613] hover:bg-[#E30613]/90"
-            >
-              {saving ? "Salvando..." : selectedPartner ? "Salvar Alterações" : "Criar Parceiro"}
+            <Button onClick={handleSave} disabled={saving} className="btn-premium-red">
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {selectedPartner ? "Salvar" : "Cadastrar"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
+      {/* Dialog ativar/desativar */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent className="border-white/[0.06] bg-[#0f0f0f]">
+        <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">Remover Parceiro</AlertDialogTitle>
-            <AlertDialogDescription className="text-white/50">
-              Tem certeza que deseja remover <strong className="text-white">{selectedPartner?.name}</strong>?
-              Esta ação não pode ser desfeita.
+            <AlertDialogTitle>
+              {selectedPartner?.active ? "Desativar parceiro?" : "Reativar parceiro?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedPartner?.active
+                ? `${selectedPartner?.full_name} não receberá novas ofertas de serviço.`
+                : `${selectedPartner?.full_name} voltará a receber ofertas.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-white/10 text-white/60 hover:text-white">
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-[#E30613] hover:bg-[#E30613]/90"
-            >
-              Remover
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeactivate} disabled={saving}>
+              {saving ? "Salvando..." : "Confirmar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Technician Dialog */}
-      <Dialog open={techDialogOpen} onOpenChange={setTechDialogOpen}>
-        <DialogContent className="max-w-2xl border-white/[0.06] bg-[#0f0f0f]">
-          <DialogHeader>
-            <DialogTitle className="text-white">
-              Técnicos - {selectedPartnerForTech?.name}
-            </DialogTitle>
-          </DialogHeader>
-
-          {/* Add Tech Form */}
-          <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-4">
-            <h4 className="mb-3 text-sm font-medium text-white">Adicionar Técnico</h4>
-
-            {selectedUser ? (
-              <div className="mb-3 flex items-center gap-3 rounded-lg border border-[#8B5CF6]/30 bg-[#8B5CF6]/5 p-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#8B5CF6]/20">
-                  <Users className="h-4 w-4 text-[#8B5CF6]" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-white">{selectedUser.full_name}</p>
-                  <p className="text-xs text-white/40">{selectedUser.user_private?.email}</p>
-                </div>
-                <button
-                  onClick={() => {
-                    setSelectedUser(null);
-                    setUserSearch("");
-                    setTechForm({ cpf: "" });
-                  }}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <div className="relative mb-3">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-                <Input
-                  value={userSearch}
-                  onChange={(e) => {
-                    setUserSearch(e.target.value);
-                    searchUsers(e.target.value);
-                  }}
-                  placeholder="Buscar usuário por nome..."
-                  className="pl-10 border-white/10 bg-white/[0.03] text-white"
-                />
-                {userSearchResults.length > 0 && (
-                  <div className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-white/10 bg-[#1a1a1a] shadow-lg">
-                    {userSearchResults.map((user) => (
-                      <button
-                        key={user.id}
-                        onClick={() => {
-                          setSelectedUser(user);
-                          setUserSearch("");
-                          setUserSearchResults([]);
-                        }}
-                        className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-white/[0.06]"
-                      >
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#8B5CF6]/20">
-                          <Users className="h-3.5 w-3.5 text-[#8B5CF6]" />
-                        </div>
-                        <div>
-                          <p className="text-sm text-white">{user.full_name}</p>
-                          <p className="text-xs text-white/40">{user.user_private?.email}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {selectedUser && (
-              <div className="flex gap-3">
-                <Input
-                  value={techForm.cpf}
-                  onChange={(e) => setTechForm({ ...techForm, cpf: e.target.value })}
-                  placeholder="CPF"
-                  className="flex-1 border-white/10 bg-white/[0.03] text-white"
-                />
-                <Button
-                  onClick={handleAddTech}
-                  disabled={savingTech}
-                  className="bg-[#8B5CF6] hover:bg-[#8B5CF6]/90"
-                >
-                  {savingTech ? "Adicionando..." : "Adicionar"}
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Tech List */}
-          <div className="mt-4">
-            <h4 className="mb-3 text-sm font-medium text-white">
-              Técnicos Cadastrados ({technicians.length})
-            </h4>
-            {loadingTechs ? (
-              <div className="py-4 text-center text-sm text-white/40">Carregando...</div>
-            ) : technicians.length === 0 ? (
-              <div className="py-4 text-center text-sm text-white/40">
-                Nenhum técnico cadastrado para este parceiro.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {technicians.map((tech) => (
-                  <div
-                    key={tech.id}
-                    className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.02] p-3"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-white">
-                        {tech.profiles?.full_name || "Sem nome"}
-                      </p>
-                      <p className="text-xs text-white/40">{tech.profiles?.user_private?.email}</p>
-                      <p className="text-xs text-white/40">CPF: {tech.cpf}</p>
-                    </div>
-                    <button
-                      onClick={() => handleRemoveTech(tech.id)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg text-white/40 transition-colors hover:bg-[#E30613]/10 hover:text-[#E30613]"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

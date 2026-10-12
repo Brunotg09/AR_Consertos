@@ -45,7 +45,7 @@ import { ptBR } from "date-fns/locale";
 
 interface Partner {
   id: string;
-  name: string;
+  full_name: string;
 }
 
 interface Cliente {
@@ -69,14 +69,14 @@ interface CombinedService {
   price: number | null;
   partner_id: string | null;
   partner_name: string | null;
-  source: "services" | "partner_services";
+  source: "services";
 }
 
 interface Subscription {
   id: string;
   client_user_id: string | null;
   client_id: number | null;
-  partner_id: string;
+  assigned_partner_id: string | null;
   service_id: string | null;
   visit_interval: string;
   title: string;
@@ -164,9 +164,9 @@ export default function AssinaturasPage() {
       const enriched = await Promise.all(
         (data || []).map(async (sub) => {
           const [partnerRes, clientRes] = await Promise.all([
-            sub.partner_id
-              ? supabase.from("partners").select("name").eq("id", sub.partner_id).maybeSingle()
-              : Promise.resolve({ data: null as { name: string } | null }),
+            sub.assigned_partner_id
+              ? supabase.from("partners").select("full_name").eq("id", sub.assigned_partner_id).maybeSingle()
+              : Promise.resolve({ data: null as { full_name: string } | null }),
             sub.client_id
               ? supabase.from("clientes").select("nome").eq("id", sub.client_id).maybeSingle()
               : sub.client_user_id
@@ -177,19 +177,14 @@ export default function AssinaturasPage() {
           let serviceName = null;
           if (sub.service_id) {
             const svcRes = await supabase.from("services").select("name").eq("service_id", sub.service_id).maybeSingle();
-            if (svcRes.data) {
-              serviceName = svcRes.data.name;
-            } else {
-              const psvcRes = await supabase.from("partner_services").select("name").eq("service_id", sub.service_id).maybeSingle();
-              serviceName = psvcRes.data?.name || null;
-            }
+            serviceName = svcRes.data?.name || null;
           }
 
           const clientData = clientRes.data as Record<string, any> | null;
 
           return {
             ...sub,
-            partner_name: partnerRes.data?.name || "N/A",
+            partner_name: partnerRes.data?.full_name || "N/A",
             client_name: clientData?.nome || clientData?.full_name || "N/A",
             service_name: serviceName,
           };
@@ -204,55 +199,31 @@ export default function AssinaturasPage() {
   }, []);
 
   const fetchPartnersAndClients = useCallback(async () => {
-    const [partnersRes, clientsRes, servicesRes, partnerServicesRes] = await Promise.all([
-      supabase.from("partners").select("id, name").eq("active", true).order("name").then(r => ({ data: r.data, error: r.error })),
+    const [partnersRes, clientsRes, servicesRes] = await Promise.all([
+      supabase.from("partners").select("id, full_name").eq("active", true).order("full_name").then(r => ({ data: r.data, error: r.error })),
       supabase.from("clientes").select("id, nome, telefone, email, cpf, user_id").order("nome").then(r => ({ data: r.data, error: r.error })),
       supabase.from("services").select("service_id, name, category, type, price").eq("active", true).then(r => ({ data: r.data, error: r.error })),
-      supabase.from("partner_services").select("service_id, name, category, type, price, partner_id").eq("active", true).then(r => ({ data: r.data, error: r.error })),
     ]);
 
     setPartners(partnersRes.data || []);
     setClients(clientsRes.data || []);
 
-    // Buscar nomes dos parceiros separadamente se necessário
-    const partnerMap = new Map<string, string>();
-    if ((partnerServicesRes.data || []).length > 0) {
-      const partnerIds = Array.from(new Set((partnerServicesRes.data || []).map((s: any) => s.partner_id).filter(Boolean)));
-      if (partnerIds.length > 0) {
-        const { data: partnerNames } = await supabase.from("partners").select("id, name").in("id", partnerIds);
-        (partnerNames || []).forEach((p: any) => partnerMap.set(p.id, p.name));
-      }
-    }
-
-    const combined: CombinedService[] = [
-      ...(servicesRes.data || []).map((s) => ({
-        ...s,
-        pricing_config: null as CombinedService["pricing_config"],
-        partner_id: null,
-        partner_name: null,
-        source: "services" as const,
-      })),
-      ...(partnerServicesRes.data || []).map((s: any) => ({
-        ...s,
-        pricing_config: null as CombinedService["pricing_config"],
-        partner_id: s.partner_id,
-        partner_name: partnerMap.get(s.partner_id) || null,
-        source: "partner_services" as const,
-      })),
-    ];
+    const combined: CombinedService[] = (servicesRes.data || []).map((s) => ({
+      ...s,
+      pricing_config: null as CombinedService["pricing_config"],
+      partner_id: null,
+      partner_name: null,
+      source: "services" as const,
+    }));
     setAllServices(combined);
 
     // Buscar pricing_config separadamente (coluna pode não existir)
     const allIds = combined.map((s) => s.service_id);
     if (allIds.length > 0) {
       try {
-        const [svcPricing, psvcPricing] = await Promise.all([
-          supabase.from("services").select("service_id, pricing_config").in("service_id", allIds),
-          supabase.from("partner_services").select("service_id, pricing_config").in("service_id", allIds),
-        ]);
+        const svcPricing = await supabase.from("services").select("service_id, pricing_config").in("service_id", allIds);
         const pricingMap = new Map<string, CombinedService["pricing_config"]>();
         (svcPricing.data || []).forEach((r: any) => pricingMap.set(r.service_id, r.pricing_config));
-        (psvcPricing.data || []).forEach((r: any) => pricingMap.set(r.service_id, r.pricing_config));
         setAllServices((prev) =>
           prev.map((s) => ({ ...s, pricing_config: pricingMap.get(s.service_id) || null }))
         );
@@ -279,8 +250,8 @@ export default function AssinaturasPage() {
     (s) =>
       (clientFilter ? s.client_id?.toString() === clientFilter : true) &&
       (serviceFilter === "all" ? true :
-       serviceFilter === "own" ? !s.partner_id :
-       !!s.partner_id) &&
+       serviceFilter === "own" ? !s.assigned_partner_id :
+       !!s.assigned_partner_id) &&
       (s.title.toLowerCase().includes(search.toLowerCase()) ||
       s.partner_name?.toLowerCase().includes(search.toLowerCase()) ||
       s.client_name?.toLowerCase().includes(search.toLowerCase()))
@@ -306,7 +277,6 @@ export default function AssinaturasPage() {
   });
 
   const ownServices = filteredServices.filter((s) => s.source === "services");
-  const partnerSvcList = filteredServices.filter((s) => s.source === "partner_services");
 
   const resetForm = () => {
     setFormData({
@@ -341,7 +311,7 @@ export default function AssinaturasPage() {
       billing_day: String(sub.billing_day),
       visit_interval: sub.visit_interval || "1m",
       service_id: sub.service_id || "",
-      partner_id: sub.partner_id,
+      partner_id: sub.assigned_partner_id || "",
       client_id: sub.client_id?.toString() || "",
       start_date: sub.start_date,
       notes: sub.notes || "",
@@ -389,7 +359,7 @@ export default function AssinaturasPage() {
         billing_day: parseInt(formData.billing_day),
         visit_interval: formData.visit_interval,
         service_id: planMode === "service" ? (formData.service_id || null) : null,
-        partner_id: planMode === "service" ? (formData.partner_id || null) : null,
+        assigned_partner_id: planMode === "service" ? (formData.partner_id || null) : null,
         client_id: parseInt(formData.client_id),
         start_date: formData.start_date,
         notes: formData.notes || null,
@@ -722,7 +692,7 @@ export default function AssinaturasPage() {
                       <td colSpan={10} className="px-6 py-4">
                         <SubscriptionVisits
                           subscription={sub}
-                          isPartnerService={!!sub.partner_id}
+                          isPartnerService={!!sub.assigned_partner_id}
                         />
                       </td>
                     </tr>
@@ -798,7 +768,7 @@ export default function AssinaturasPage() {
                   <Label className="text-white/70">Serviço *</Label>
                   <div className="relative">
                     <Input
-                      value={serviceDropdownOpen ? serviceSearch : (selectedService ? `${selectedService.name} — ${selectedService.source === "partner_services" ? selectedService.partner_name : selectedService.category}` : "")}
+                      value={serviceDropdownOpen ? serviceSearch : (selectedService ? `${selectedService.name} — ${selectedService.category}` : "")}
                       onChange={(e) => {
                         e.stopPropagation();
                         setServiceSearch(e.target.value);
@@ -871,64 +841,7 @@ export default function AssinaturasPage() {
                             ))}
                           </div>
                         )}
-                        {partnerSvcList.length > 0 && (
-                          <div>
-                            <div className="sticky top-0 bg-[#1a1a1a] px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-white/30">
-                              Serviços de Parceiros
-                            </div>
-                            {partnerSvcList.map((s) => (
-                              <button
-                                key={s.service_id}
-                                type="button"
-                                onClick={() => {
-                                  setFormData({ ...formData, service_id: s.service_id, partner_id: s.partner_id || "" });
-                                  setServiceSearch("");
-                                  setServiceDropdownOpen(false);
-                                }}
-                                className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-white/[0.06] ${
-                                  formData.service_id === s.service_id ? "bg-white/[0.08]" : ""
-                                }`}
-                              >
-                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#10B981]/10">
-                                  <Wrench className="h-4 w-4 text-[#10B981]" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-white truncate">{s.name}</p>
-                                  <div className="flex items-center gap-2 mt-0.5">
-                                    <span className="text-[11px] text-white/40">{s.partner_name || "Parceiro"}</span>
-                                    {s.pricing_config?.intervals && s.pricing_config.intervals.length > 0 ? (
-                                      <span className="text-[11px] font-semibold text-[#22c55e]">
-                                        {s.pricing_config.intervals.filter((i) => i.price != null && i.price > 0).map((i) => `R${i.price!.toFixed(0)}`).join(" / ")}
-                                      </span>
-                                    ) : s.price != null ? (
-                                      <span className="text-[11px] font-semibold text-[#22c55e]">
-                                        R$ {s.price.toFixed(2).replace(".", ",")}
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                </div>
-                                <div className="flex flex-col items-end gap-1">
-                                  {(!s.pricing_config?.model || s.pricing_config?.model === "avulso") && (
-                                    <span className="rounded-md bg-white/[0.06] px-2 py-0.5 text-[9px] font-medium text-white/50">
-                                      Avulso
-                                    </span>
-                                  )}
-                                  {s.pricing_config?.model === "assinatura" && (
-                                    <span className="rounded-md bg-[#3B82F6]/15 px-2 py-0.5 text-[9px] font-medium text-[#3B82F6]">
-                                      Assinatura
-                                    </span>
-                                  )}
-                                  {s.pricing_config?.model === "ambos" && (
-                                    <span className="rounded-md bg-[#F59E0B]/15 px-2 py-0.5 text-[9px] font-medium text-[#F59E0B]">
-                                      Avulso + Assinatura
-                                    </span>
-                                  )}
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {ownServices.length === 0 && partnerSvcList.length === 0 && (
+                        {ownServices.length === 0 && (
                           <div className="px-3 py-4 text-center text-sm text-white/30">
                             Nenhum serviço encontrado
                           </div>
@@ -940,7 +853,7 @@ export default function AssinaturasPage() {
                     <p className="text-xs text-white/40">
                       Parceiro vinculado:{" "}
                       <span className="text-[#10B981]">
-                        {partners.find((p) => p.id === formData.partner_id)?.name || "N/A"}
+                        {partners.find((p) => p.id === formData.partner_id)?.full_name || "N/A"}
                       </span>
                     </p>
                   )}

@@ -113,10 +113,11 @@ export default function PedidoConfirmacaoPage() {
   const statusColors: Record<string, string> = {
     pendente: "#ffaa44",
     pending: "#ffaa44",
-    confirmado: "#44dd88",
-    confirmed: "#44dd88",
+    orcamento_enviado: "#06B6D4",
     em_andamento: "#8B5CF6",
     in_progress: "#8B5CF6",
+    pronto: "#10B981",
+    entregue: "#14B8A6",
     concluido: "#44dd88",
     completed: "#44dd88",
     cancelado: "#ff6b6b",

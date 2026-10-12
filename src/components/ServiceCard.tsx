@@ -29,21 +29,31 @@ interface ServiceCardProps {
   };
   variant?: "convencional" | "inverter";
   partner?: boolean;
+  isPriority?: boolean;
 }
 
-export function ServiceCard({ service, variant, partner }: ServiceCardProps) {
+export function ServiceCard({ service, variant, partner, isPriority }: ServiceCardProps) {
   const type = variant || service.type;
   const isInverter = type === "inverter";
   const isPartner = partner || !!service.partner_id;
   const accent = isPartner ? "#10B981" : isInverter ? "#8B5CF6" : "#E30613";
 
+  // Optimize Supabase image URLs with transformation parameters
+  const optimizeImageUrl = (url: string, width = 400, height = 300) => {
+    if (!url || url.startsWith("data:")) return url;
+    // Supabase image transformation API
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}width=${width}&height=${height}&resize=cover&format=webp&quality=75`;
+  };
+
   const images = service.images && service.images.length > 0
-    ? service.images
+    ? service.images.map(url => optimizeImageUrl(url, 400, 300))
     : [];
 
   const [currentImage, setCurrentImage] = useState(0);
   const [selectedInterval, setSelectedInterval] = useState<string | null>(null);
   const { addService } = useCart();
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   const hasPricing = !!service.pricing_config?.intervals?.length;
   const hasAvulso = service.pricing_config?.model === "avulso" || service.pricing_config?.model === "ambos";
@@ -60,6 +70,9 @@ export function ServiceCard({ service, variant, partner }: ServiceCardProps) {
 
   const serviceSlug = service.service_id || `svc-${service.id}`;
   const seoUrl = serviceUrl(service.category, service.name, service.description, service.service_id);
+
+  // Simple 1x1 transparent pixel as blur placeholder
+  const blurDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
   const handleSchedule = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -129,59 +142,75 @@ export function ServiceCard({ service, variant, partner }: ServiceCardProps) {
           WebkitBackdropFilter: "blur(16px) saturate(140%)",
         }}
       >
-      {/* Image carousel */}
-      <Link href={seoUrl} className="block">
-        <div className="relative h-[180px] w-full overflow-hidden">
+      {/* Image carousel - Image inside Link, navigation OUTSIDE */}
+      <div className="relative h-[180px] w-full overflow-hidden">
+        <Link href={seoUrl} className="block h-full w-full">
           {images.length > 0 ? (
             <>
-              <Image
-                key={currentImage}
-                src={images[currentImage]}
-                alt={`${service.name} ${currentImage + 1}`}
-                fill
-                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                className="object-cover transition-opacity duration-500"
-                loading="lazy"
-              />
-              {images.length > 1 && (
-                <>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); prevImage(); }}
-                    className="absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-full p-1.5 opacity-0 transition-all duration-200 group-hover:opacity-100 hover:scale-110"
-                    style={{ backgroundColor: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", color: "white" }}
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); nextImage(); }}
-                    className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-full p-1.5 opacity-0 transition-all duration-200 group-hover:opacity-100 hover:scale-110"
-                    style={{ backgroundColor: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", color: "white" }}
-                  >
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </button>
-                </>
-              )}
-              {images.length > 1 && (
-                <div className="absolute bottom-3 right-3 flex gap-1">
-                  {images.map((_, idx) => (
-                    <button
-                      key={idx}
-                      onClick={(e) => { e.stopPropagation(); setCurrentImage(idx); }}
-                      className="h-1.5 rounded-full transition-all duration-300"
-                      style={{
-                        width: idx === currentImage ? "1.25rem" : "0.375rem",
-                        backgroundColor: idx === currentImage ? accent : "rgba(34, 34, 34, 0.9)",
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
+              <div className="absolute inset-0 overflow-hidden">
+                <Image
+                  key={currentImage}
+                  src={images[currentImage]}
+                  alt={`${service.name} ${currentImage + 1}`}
+                  fill
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                  className={`object-cover transition-opacity duration-700 ${
+                    imageLoaded ? "opacity-100" : "opacity-0"
+                  }`}
+                  placeholder="blur"
+                  blurDataURL={blurDataUrl}
+                  loading={isPriority ? "eager" : "lazy"}
+                  onLoad={() => setImageLoaded(true)}
+                  priority={isPriority}
+                />
+                {!imageLoaded && (
+                  <div className="absolute inset-0 flex items-center justify-center" style={{ backgroundColor: "rgba(255,255,255,0.03)" }}>
+                    <ImageIcon className="h-12 w-12 animate-pulse" style={{ color: "#444" }} />
+                  </div>
+                )}
+              </div>
             </>
           ) : (
             <div className="flex h-full w-full items-center justify-center" style={{ backgroundColor: "rgba(255,255,255,0.03)" }}>
               <ImageIcon className="h-12 w-12" style={{ color: "#444" }} />
             </div>
           )}
+        </Link>
+
+        {/* Navigation buttons OUTSIDE the Link */}
+        {images.length > 1 && (
+          <>
+            <button
+              onClick={(e) => { e.stopPropagation(); prevImage(); }}
+              className="absolute left-2 top-1/2 z-20 -translate-y-1/2 rounded-full p-1.5 opacity-0 transition-all duration-200 group-hover:opacity-100 hover:scale-110"
+              style={{ backgroundColor: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", color: "white" }}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); nextImage(); }}
+              className="absolute right-2 top-1/2 z-20 -translate-y-1/2 rounded-full p-1.5 opacity-0 transition-all duration-200 group-hover:opacity-100 hover:scale-110"
+              style={{ backgroundColor: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", color: "white" }}
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </>
+        )}
+        {images.length > 1 && (
+          <div className="absolute bottom-3 right-3 flex gap-1">
+            {images.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={(e) => { e.stopPropagation(); setCurrentImage(idx); }}
+                className="h-1.5 rounded-full transition-all duration-300"
+                style={{
+                  width: idx === currentImage ? "1.25rem" : "0.375rem",
+                  backgroundColor: idx === currentImage ? accent : "rgba(34, 34, 34, 0.9)",
+                }}
+              />
+            ))}
+          </div>
+        )}
 
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
@@ -200,7 +229,6 @@ export function ServiceCard({ service, variant, partner }: ServiceCardProps) {
             />
           </div>
         </div>
-      </Link>
 
       {/* Content */}
       <div className="p-5">

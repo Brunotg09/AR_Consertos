@@ -56,42 +56,41 @@ export default function ProdutoDetalhePage() {
 
   // Dynamic SEO metadata
   useEffect(() => {
-    if (product) {
-      const siteName = "A.R Conserto";
-      const title = `${product.name} | ${siteName} - Loja`;
-      document.title = title;
+    if (!product) return;
+    const siteName = "A.R Conserto";
+    const title = `${product.name} | ${siteName} - Loja`;
+    document.title = title;
 
-      const metaDesc = product.description
-        ? `${product.name}: ${product.description} Confira preço e disponibilidade!`
-        : `${product.name} - ${product.category || "Produto"} disponível na ${siteName}. Confira!`;
-      
-      let metaTag = document.querySelector('meta[name="description"]');
-      if (!metaTag) {
-        metaTag = document.createElement("meta");
-        metaTag.setAttribute("name", "description");
-        document.head.appendChild(metaTag);
-      }
-      metaTag.setAttribute("content", metaDesc.substring(0, 160));
-
-      const ogTitle = document.querySelector('meta[property="og:title"]');
-      if (ogTitle) ogTitle.setAttribute("content", title);
-      
-      const ogDesc = document.querySelector('meta[property="og:description"]');
-      if (ogDesc) ogDesc.setAttribute("content", metaDesc.substring(0, 160));
-
-      const ogImage = product.images?.[0];
-      const ogImageTag = document.querySelector('meta[property="og:image"]');
-      if (ogImage && ogImageTag) ogImageTag.setAttribute("content", ogImage);
-
-      const canonicalUrl = `https://ar-consertos.vercel.app/produto/${product.id}`;
-      let canonicalTag = document.querySelector('link[rel="canonical"]');
-      if (!canonicalTag) {
-        canonicalTag = document.createElement("link");
-        canonicalTag.setAttribute("rel", "canonical");
-        document.head.appendChild(canonicalTag);
-      }
-      canonicalTag.setAttribute("href", canonicalUrl);
+    const metaDesc = product.description
+      ? `${product.name}: ${product.description} Confira preço e disponibilidade!`
+      : `${product.name} - ${product.category || "Produto"} disponível na ${siteName}. Confira!`;
+    
+    let metaTag = document.querySelector('meta[name="description"]');
+    if (!metaTag) {
+      metaTag = document.createElement("meta");
+      metaTag.setAttribute("name", "description");
+      document.head.appendChild(metaTag);
     }
+    metaTag.setAttribute("content", metaDesc.substring(0, 160));
+
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    if (ogTitle) ogTitle.setAttribute("content", title);
+    
+    const ogDesc = document.querySelector('meta[property="og:description"]');
+    if (ogDesc) ogDesc.setAttribute("content", metaDesc.substring(0, 160));
+
+    const ogImage = product.images?.[0];
+    const ogImageTag = document.querySelector('meta[property="og:image"]');
+    if (ogImage && ogImageTag) ogImageTag.setAttribute("content", ogImage);
+
+    const canonicalUrl = `https://ar-consertos.vercel.app/produto/${product.id}`;
+    let canonicalTag = document.querySelector('link[rel="canonical"]');
+    if (!canonicalTag) {
+      canonicalTag = document.createElement("link");
+      canonicalTag.setAttribute("rel", "canonical");
+      document.head.appendChild(canonicalTag);
+    }
+    canonicalTag.setAttribute("href", canonicalUrl);
   }, [product]);
 
   const fetchProduct = useCallback(async () => {
@@ -106,10 +105,13 @@ export default function ProdutoDetalhePage() {
       if (error) {
         console.error("Error fetching product:", error);
         setProduct(null);
-      } else {
+      } else if (data?.id) {
         setProduct(data);
         setImgError(false);
         setQuantity(1);
+      } else {
+        // No valid data returned - product not found or access denied
+        setProduct(null);
       }
     } catch (err) {
       console.error("Error fetching product:", err);

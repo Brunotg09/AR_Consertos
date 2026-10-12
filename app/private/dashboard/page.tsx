@@ -57,6 +57,7 @@ interface KPIData {
   receitaConvencional: number;
   receitaInverter: number;
   receitaProdutos: number;
+  comissaoParceiros: number;
 }
 
 interface RecentOrder {
@@ -64,6 +65,7 @@ interface RecentOrder {
   created_at: string;
   total: number;
   status: string;
+  isPartner?: boolean;
 }
 
 interface DailyRevenue {
@@ -76,8 +78,10 @@ interface DailyRevenue {
 
 const STATUS_COLORS: Record<string, string> = {
   pendente: "#EAB308",
-  confirmado: "#3B82F6",
+  orcamento_enviado: "#06B6D4",
   em_andamento: "#8B5CF6",
+  pronto: "#10B981",
+  entregue: "#14B8A6",
   concluido: "#22C55E",
   cancelado: "#EF4444",
 };
@@ -139,7 +143,7 @@ export default function AdminDashboard() {
           { data: [], error: null }
         ),
         withTimeout(() =>
-          supabase.from("order_items").select("item_type, service_type, item_name, price, quantity, order_id"),
+          supabase.from("order_items").select("item_type, service_type, item_name, price, quantity, order_id, partner_id, service_order_id"),
           8000,
           { data: [], error: null }
         ),
@@ -154,31 +158,51 @@ export default function AdminDashboard() {
       const orderItems = orderItemsResult.status === "fulfilled" ? orderItemsResult.value.data || [] : [];
       const clientsCount = clientsResult.status === "fulfilled" ? clientsResult.value.count : 0;
 
+      // Pedido totalmente delegado (todos os itens = serviços com parceiro) some da visão do admin
+      const itemsByOrder: Record<string, typeof orderItems> = {};
+      orderItems.forEach((item: (typeof orderItems)[number]) => {
+        (itemsByOrder[item.order_id] ||= []).push(item);
+      });
+      const isFullyDelegated = (orderId: string) => {
+        const items = itemsByOrder[orderId] || [];
+        if (items.length === 0) return false;
+        return items.every(
+          (item: (typeof orderItems)[number]) =>
+            item.item_type === "servico" && (!!item.partner_id || !!item.service_order_id)
+        );
+      };
+      const visibleOrders = orders.filter((o: { id: string }) => !isFullyDelegated(o.id));
+
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const pedidosHoje = orders.filter(
+      const pedidosHoje = visibleOrders.filter(
         (o: { created_at: string }) => new Date(o.created_at) >= today
       ).length;
 
-      const pedidosPendentes = orders.filter(
-        (o: { status: string }) => o.status === "pendente" || o.status === "confirmado" || o.status === "em_andamento"
+      const pedidosPendentes = visibleOrders.filter(
+        (o: { status: string }) => o.status === "pendente" || o.status === "orcamento_enviado" || o.status === "em_andamento"
       ).length;
 
-      // Receita Recebida: pedidos concluídos
-      const receitaRecebida = orders
+      // Soma dos itens SEM parceiro por pedido (receita própria do admin)
+      const ownItemByOrder: Record<string, number> = {};
+      orderItems.forEach((item: { order_id: string; price: number; quantity: number; partner_id: string | null; service_order_id: string | null }) => {
+        if (item.partner_id || item.service_order_id) return;
+        ownItemByOrder[item.order_id] = (ownItemByOrder[item.order_id] || 0) + Number(item.price || 0) * (item.quantity || 1);
+      });
+
+      // Receita própria: soma dos itens SEM parceiro, agrupada por status do pedido
+      const receitaRecebida = visibleOrders
         .filter((o: { status: string }) => o.status === "concluido")
-        .reduce((sum: number, o: { total: number }) => sum + Number(o.total || 0), 0);
+        .reduce((sum: number, o: { id: string }) => sum + (ownItemByOrder[o.id] || 0), 0);
 
-      // Receita Pendente: pedidos pendentes, confirmados ou em andamento
-      const receitaPendente = orders
-        .filter((o: { status: string }) => o.status === "pendente" || o.status === "confirmado" || o.status === "em_andamento")
-        .reduce((sum: number, o: { total: number }) => sum + Number(o.total || 0), 0);
+      const receitaPendente = visibleOrders
+        .filter((o: { status: string }) => o.status === "pendente" || o.status === "orcamento_enviado" || o.status === "em_andamento")
+        .reduce((sum: number, o: { id: string }) => sum + (ownItemByOrder[o.id] || 0), 0);
 
-      // Receita Total: tudo que não foi cancelado
-      const receitaTotal = orders
+      const receitaTotal = visibleOrders
         .filter((o: { status: string }) => o.status !== "cancelado")
-        .reduce((sum: number, o: { total: number }) => sum + Number(o.total || 0), 0);
+        .reduce((sum: number, o: { id: string }) => sum + (ownItemByOrder[o.id] || 0), 0);
 
       let receitaConvencional = 0;
       let receitaInverter = 0;
@@ -186,7 +210,7 @@ export default function AdminDashboard() {
       const dailyRev: Record<string, DailyRevenue> = {};
       const statusCounts: Record<string, number> = {};
 
-      orders.forEach((order: { status: string; created_at: string }) => {
+      visibleOrders.forEach((order: { status: string; created_at: string }) => {
         statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
         const dateKey = format(new Date(order.created_at), "dd/MM");
         if (!dailyRev[dateKey]) {
@@ -194,8 +218,9 @@ export default function AdminDashboard() {
         }
       });
 
-      orderItems.forEach((item: { order_id: string; item_type: string; service_type: string | null; price: number; quantity: number }) => {
-        const order = orders.find((o: { id: string }) => o.id === item.order_id);
+      orderItems.forEach((item: { order_id: string; item_type: string; service_type: string | null; price: number; quantity: number; partner_id: string | null; service_order_id: string | null }) => {
+        if (item.partner_id || item.service_order_id) return;
+        const order = visibleOrders.find((o: { id: string }) => o.id === item.order_id);
         if (!order) return;
 
         const itemTotal = Number(item.price || 0) * (item.quantity || 1);
@@ -217,10 +242,27 @@ export default function AdminDashboard() {
         }
       });
 
-      orders.forEach((order: { created_at: string; total: number }) => {
+      // Daily total: soma dos itens próprios por dia (não orders.total)
+      visibleOrders.forEach((order: { created_at: string; id: string }) => {
         const dateKey = format(new Date(order.created_at), "dd/MM");
-        if (dailyRev[dateKey]) dailyRev[dateKey].total += Number(order.total || 0);
+        if (dailyRev[dateKey]) dailyRev[dateKey].total += (ownItemByOrder[order.id] || 0);
       });
+
+      // Comissão de parceiros concluídos no período
+      const { data: soComissao } = await withTimeout(
+        () =>
+          supabase
+            .from("service_orders")
+            .select("commission_value")
+            .eq("status", "completed")
+            .not("partner_id", "is", null)
+            .gte("completed_at", start.toISOString())
+            .lte("completed_at", end.toISOString()),
+        8000,
+        { data: [], error: null }
+      );
+      const totalComissaoParceiros = ((soComissao as { commission_value: number | null }[]) || [])
+        .reduce((s, r) => s + (Number(r.commission_value) || 0), 0);
 
       setKpiData({
         pedidosHoje,
@@ -232,6 +274,7 @@ export default function AdminDashboard() {
         receitaConvencional,
         receitaInverter,
         receitaProdutos,
+        comissaoParceiros: totalComissaoParceiros,
       });
 
       setChartData([
@@ -252,8 +295,10 @@ export default function AdminDashboard() {
       setStatusData(
         Object.entries(statusCounts).map(([status, count]) => ({
           name: status === "pendente" ? "Pendente" :
-                status === "confirmado" ? "Confirmado" :
+                status === "orcamento_enviado" ? "Orçamento Enviado" :
                 status === "em_andamento" ? "Em Andamento" :
+                status === "pronto" ? "Pronto" :
+                status === "entregue" ? "Entregue" :
                 status === "concluido" ? "Concluído" :
                 status === "cancelado" ? "Cancelado" : status,
           value: count,
@@ -263,7 +308,11 @@ export default function AdminDashboard() {
 
       const sorted = [...orders]
         .sort((a: { created_at: string }, b: { created_at: string }) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 5);
+        .slice(0, 5)
+        .map((o: { id: string; created_at: string; total: number; status: string }) => ({
+          ...o,
+          isPartner: isFullyDelegated(o.id),
+        }));
       setRecentOrders(sorted);
     } catch (error) {
     } finally {
@@ -285,8 +334,10 @@ export default function AdminDashboard() {
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
       pendente: "Pendente",
-      confirmado: "Confirmado",
+      orcamento_enviado: "Orçamento Enviado",
       em_andamento: "Em Andamento",
+      pronto: "Pronto",
+      entregue: "Entregue",
       concluido: "Concluído",
       cancelado: "Cancelado",
     };
@@ -296,8 +347,10 @@ export default function AdminDashboard() {
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       pendente: "bg-yellow-500/20 text-yellow-400",
-      confirmado: "bg-blue-500/20 text-blue-400",
+      orcamento_enviado: "bg-cyan-500/20 text-cyan-400",
       em_andamento: "bg-purple-500/20 text-purple-400",
+      pronto: "bg-emerald-500/20 text-emerald-400",
+      entregue: "bg-teal-500/20 text-teal-400",
       concluido: "bg-green-500/20 text-green-400",
       cancelado: "bg-red-500/20 text-red-400",
     };
@@ -368,6 +421,12 @@ export default function AdminDashboard() {
           icon={TrendingUp}
           color="#8B5CF6"
         />
+        <KPICard
+          title="Comissão Parceiros"
+          value={formatCurrency(kpiData?.comissaoParceiros ?? 0)}
+          icon={Users}
+          color="#C9A84C"
+        />
       </div>
 
       {/* Charts */}
@@ -420,9 +479,15 @@ export default function AdminDashboard() {
                     {formatCurrency(Number(order.total))}
                   </td>
                   <td className="py-3">
-                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getStatusColor(order.status)}`}>
-                      {getStatusLabel(order.status)}
-                    </span>
+                    {order.isPartner ? (
+                      <span className="inline-flex rounded-full bg-purple-500/20 px-2.5 py-1 text-xs font-medium text-purple-400">
+                        Parceiro
+                      </span>
+                    ) : (
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getStatusColor(order.status)}`}>
+                        {getStatusLabel(order.status)}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

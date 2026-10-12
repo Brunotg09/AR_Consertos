@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { createServerSupabase } from '@/lib/supabase-server';
+import { productUrl } from '@/lib/slugify';
 
 const baseUrl = 'https://ar-consertos.vercel.app';
 
@@ -22,14 +23,23 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${baseUrl}/produtos`, lastModified: now, changeFrequency: 'weekly', priority: 0.8 },
     { url: `${baseUrl}/contato`, lastModified: now, changeFrequency: 'monthly', priority: 0.7 },
     { url: `${baseUrl}/politica-de-privacidade`, lastModified: now, changeFrequency: 'yearly', priority: 0.3 },
+    { url: `${baseUrl}/termos-de-uso`, lastModified: now, changeFrequency: 'yearly', priority: 0.3 },
   ];
+
+  let entries: MetadataRoute.Sitemap = [];
 
   try {
     const supabase = createServerSupabase();
-    const { data: services } = await supabase
-      .from('services')
-      .select('id, name, category, type, service_id')
-      .eq('active', true);
+    const [{ data: services }, { data: products }] = await Promise.all([
+      supabase
+        .from('services')
+        .select('id, name, category, type, service_id')
+        .eq('active', true),
+      supabase
+        .from('products')
+        .select('id, name')
+        .eq('active', true),
+    ]);
 
     if (services) {
       const servicePages: MetadataRoute.Sitemap = services.map((service) => {
@@ -42,10 +52,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           priority: 0.7,
         };
       });
-      return [...staticPages, ...servicePages];
+      entries = [...entries, ...servicePages];
+    }
+
+    if (products) {
+      const productPages: MetadataRoute.Sitemap = products.map((product) => ({
+        url: `${baseUrl}${productUrl(product.id, product.name)}`,
+        lastModified: now,
+        changeFrequency: 'weekly' as const,
+        priority: 0.6,
+      }));
+      entries = [...entries, ...productPages];
     }
   } catch (error) {
   }
 
-  return staticPages;
+  return [...staticPages, ...entries];
 }

@@ -42,12 +42,25 @@ function conditionBadge(condition: string | null) {
   );
 }
 
+/** Placeholder blur (1x1) usado no <Image placeholder="blur">. */
+const blurDataUrl =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
 function ProdutosContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const categoriaAtiva = searchParams.get("categoria") || "Todas";
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const blurDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+  // Optimize Supabase image URLs with transformation parameters
+  const optimizeImageUrl = (url: string, width = 400, height = 300) => {
+    if (!url || url.startsWith("data:")) return url;
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}width=${width}&height=${height}&resize=cover&format=webp&quality=75`;
+  };
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -150,9 +163,14 @@ function ProdutosContent() {
           Nenhum produto disponível nesta categoria.
         </div>
       ) : (
-        <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filtrados.map((product) => {
-            const image = product.images?.[0] || null;
+        <>
+          <style jsx>{`
+            .skeleton { background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%); background-size: 200% 100%; animation: skeleton 1.5s infinite; }
+            @keyframes skeleton { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+          `}</style>
+          <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {filtrados.map((product, index) => {
+            const image = product.images?.[0] ? optimizeImageUrl(product.images[0], 400, 300) : null;
             const discountPct = product.discount_percentage || 0;
             const discountedPrice = discountPct > 0 ? product.price * (1 - discountPct / 100) : null;
             return (
@@ -169,13 +187,19 @@ function ProdutosContent() {
               >
                 <div className="relative h-[200px] w-full overflow-hidden">
                   {image ? (
-                    <Image
-                      src={image}
-                      alt={product.name}
-                      fill
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                    />
+                    <div className="relative h-full w-full overflow-hidden">
+                      <Image
+                        src={image}
+                        alt={product.name}
+                        fill
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        placeholder="blur"
+                        blurDataURL={blurDataUrl}
+                        priority={index < 4}
+                      />
+                      <div className="skeleton absolute inset-0" />
+                    </div>
                   ) : (
                     <div className="flex h-full w-full items-center justify-center" style={{ backgroundColor: "rgba(255,255,255,0.03)" }}>
                       <ShoppingCart className="h-10 w-10" style={{ color: "#444" }} />
@@ -219,6 +243,7 @@ function ProdutosContent() {
             );
           })}
         </div>
+        </>
       )}
     </div>
   );

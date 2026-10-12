@@ -37,7 +37,6 @@ const publicNavLinks = [
   { href: "/", label: "Início", icon: Home },
   { href: "/servicos", label: "Serviços Gerais", icon: Wrench },
   { href: "/inverter", label: "Eletrônica Inverter", icon: Cpu },
-  { href: "/servicos-parceiros", label: "Serviços Parceiros", icon: Users },
   { href: "/produtos", label: "Produtos", icon: ShoppingBag },
   { href: "#", label: "Promoções", icon: Tag },
   { href: "/contato", label: "Contato", icon: Mail },
@@ -402,7 +401,7 @@ export function Header() {
                     {partnerId && (
                       <li>
                         <Link
-                          href={`/parceiro/${partnerId}`}
+                          href="/parceiro/dashboard"
                           onClick={() => setDrawerOpen(false)}
                           className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-white/70 transition-all duration-200 hover:bg-white/[0.04] hover:text-white"
                         >

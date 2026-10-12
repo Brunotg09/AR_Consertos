@@ -73,6 +73,8 @@ interface OrderItemData {
   price: number;
   quantity: number;
   payment_status: string;
+  partner_id: string | null;
+  service_order_id: string | null;
 }
 
 interface TopService {
@@ -93,8 +95,10 @@ interface BackupData {
 
 const STATUS_COLORS: Record<string, string> = {
   pendente: "#EAB308",
-  confirmado: "#3B82F6",
+  orcamento_enviado: "#06B6D4",
   em_andamento: "#8B5CF6",
+  pronto: "#10B981",
+  entregue: "#14B8A6",
   concluido: "#22C55E",
   cancelado: "#EF4444",
 };
@@ -199,11 +203,28 @@ export default function RelatoriosPage() {
           item_name,
           price,
           quantity,
-          payment_status
+          payment_status,
+          partner_id,
+          service_order_id
         `
         );
 
+      // Pedido totalmente delegado (todos os itens = serviços com parceiro) some da visão
+      const itemsByOrder: Record<string, typeof itemsData> = {};
+      (itemsData || []).forEach((item: OrderItemData) => {
+        (itemsByOrder[item.order_id] ||= []).push(item);
+      });
+      const isFullyDelegated = (orderId: string) => {
+        const items = itemsByOrder[orderId] || [];
+        if (items.length === 0) return false;
+        return items.every(
+          (item: OrderItemData) =>
+            item.item_type === "servico" && (!!item.partner_id || !!item.service_order_id)
+        );
+      };
+
       const filteredOrders = (ordersData || []).filter((o: OrderData) => {
+        if (isFullyDelegated(o.id)) return false;
         if (statusFilter !== "all" && o.status !== statusFilter) return false;
         if (statusFilter === "all" && o.status === "cancelado") return false;
         return true;
@@ -239,6 +260,8 @@ export default function RelatoriosPage() {
       });
 
       filteredItems.forEach((item: OrderItemData) => {
+        // Item com parceiro não conta na receita própria
+        if (item.partner_id || item.service_order_id) return;
         const order = filteredOrders.find((o: OrderData) => o.id === item.order_id);
         if (!order) return;
 
@@ -277,6 +300,8 @@ export default function RelatoriosPage() {
       });
 
       filteredItems.forEach((item: OrderItemData) => {
+        // Item com parceiro não conta na receita própria
+        if (item.partner_id || item.service_order_id) return;
         const amount = Number(item.price || 0) * (item.quantity || 1);
         if (item.item_type === "servico") {
           if (item.service_type === "inverter") {
@@ -305,6 +330,7 @@ export default function RelatoriosPage() {
         .from("service_orders")
         .select("id, total, commission_value, partner_value, status, partner_id, completed_at")
         .eq("status", "completed")
+        .not("partner_id", "is", null)
         .gte("completed_at", start.toISOString())
         .lte("completed_at", end.toISOString());
 
@@ -312,25 +338,31 @@ export default function RelatoriosPage() {
       const totalComissao = soList.reduce((sum, so) => sum + (Number(so.commission_value) || 0), 0);
       const totalParceirosVal = soList.reduce((sum, so) => sum + (Number(so.partner_value) || 0), 0);
       const receitaParceiros = soList.reduce((sum, so) => sum + (Number(so.total) || 0), 0);
-      const receitaPropria = grandTotal - receitaParceiros;
 
       setPartnerCommissionData({
         totalComissao,
         totalParceiros: totalParceirosVal,
-        receitaPropria: Math.max(0, receitaPropria),
+        receitaPropria: grandTotal,
         receitaParceiros,
         osParceiroCount: soList.length,
       });
 
-      // Receita Recebida: pedidos concluídos
+      // Soma dos itens SEM parceiro por pedido
+      const ownItemByOrder: Record<string, number> = {};
+      filteredItems.forEach((item: OrderItemData) => {
+        if (item.partner_id || item.service_order_id) return;
+        ownItemByOrder[item.order_id] = (ownItemByOrder[item.order_id] || 0) + Number(item.price || 0) * (item.quantity || 1);
+      });
+
+      // Receita Recebida: itens próprios de pedidos concluídos
       const recebida = filteredOrders
         .filter((o: OrderData) => o.status === "concluido")
-        .reduce((sum: number, o: OrderData) => sum + Number(o.total || 0), 0);
+        .reduce((sum: number, o: OrderData) => sum + (ownItemByOrder[o.id] || 0), 0);
 
-      // Receita Pendente: pedientes, confirmados ou em andamento
+      // Receita Pendente: itens próprios de pedidos pendentes
       const pendente = filteredOrders
-        .filter((o: OrderData) => o.status === "pendente" || o.status === "confirmado" || o.status === "em_andamento")
-        .reduce((sum: number, o: OrderData) => sum + Number(o.total || 0), 0);
+        .filter((o: OrderData) => o.status === "pendente" || o.status === "orcamento_enviado" || o.status === "em_andamento")
+        .reduce((sum: number, o: OrderData) => sum + (ownItemByOrder[o.id] || 0), 0);
 
       setTotals({
         convencional: totalConvencional,
@@ -344,8 +376,10 @@ export default function RelatoriosPage() {
       setStatusBreakdown(
         Object.entries(statusCounts).map(([status, count]) => ({
           name: status === "pendente" ? "Pendente" :
-                status === "confirmado" ? "Confirmado" :
+                status === "orcamento_enviado" ? "Orçamento Enviado" :
                 status === "em_andamento" ? "Em Andamento" :
+                status === "pronto" ? "Pronto" :
+                status === "entregue" ? "Entregue" :
                 status === "concluido" ? "Concluído" :
                 status === "cancelado" ? "Cancelado" : status,
           value: count,
@@ -594,8 +628,10 @@ export default function RelatoriosPage() {
             <SelectContent className="bg-[#1a1a1a] border-white/10">
               <SelectItem value="all" className="text-white">Todos Status</SelectItem>
               <SelectItem value="pendente" className="text-white">Pendente</SelectItem>
-              <SelectItem value="confirmado" className="text-white">Confirmado</SelectItem>
+              <SelectItem value="orcamento_enviado" className="text-white">Orçamento Enviado</SelectItem>
               <SelectItem value="em_andamento" className="text-white">Em Andamento</SelectItem>
+              <SelectItem value="pronto" className="text-white">Pronto</SelectItem>
+              <SelectItem value="entregue" className="text-white">Entregue</SelectItem>
               <SelectItem value="concluido" className="text-white">Concluído</SelectItem>
               <SelectItem value="cancelado" className="text-white">Cancelado</SelectItem>
             </SelectContent>

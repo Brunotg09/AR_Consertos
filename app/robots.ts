@@ -6,7 +6,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: '*',
         allow: '/',
-        disallow: ['/private/', '/api/'],
+        disallow: ['/private/', '/parceiro/', '/minha-conta/', '/api/'],
       },
     ],
     sitemap: 'https://ar-consertos.vercel.app/sitemap.xml',

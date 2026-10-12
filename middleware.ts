@@ -13,12 +13,22 @@ const PROTECTED_ROUTES = [
   "/checkout",
   "/historico",
   "/pedido",
+  "/private",
+  "/parceiro",
 ];
 
-function needsAuth(pathname: string): boolean {
-  return PROTECTED_ROUTES.some(
+// Painéis administrativo/parceiro: redirecionam visitantes anônimos para a home
+// (em vez de /login) para não revelar que a rota existe.
+const PANEL_ROUTES = ["/private", "/parceiro"];
+
+function matches(pathname: string, routes: string[]): boolean {
+  return routes.some(
     (route) => pathname === route || pathname.startsWith(route + "/")
   );
+}
+
+function needsAuth(pathname: string): boolean {
+  return matches(pathname, PROTECTED_ROUTES);
 }
 
 export async function middleware(request: NextRequest) {
@@ -88,6 +98,10 @@ export async function middleware(request: NextRequest) {
     // Not logged in — only redirect if route needs auth
     if (!user) {
       if (needsAuth(pathname)) {
+        // Painéis (admin/parceiro): volta para a home sem expor /login
+        if (matches(pathname, PANEL_ROUTES)) {
+          return NextResponse.redirect(new URL("/", request.url));
+        }
         const url = request.nextUrl.clone();
         url.pathname = "/login";
         url.searchParams.set("redirect", pathname);
@@ -117,6 +131,62 @@ export async function middleware(request: NextRequest) {
       url.searchParams.set("email", user.email || "");
       url.searchParams.set("redirect", pathname);
       return NextResponse.redirect(url);
+    }
+
+    // ---- Role gates (painéis) — bloqueio no servidor, antes de baixar a página ----
+
+    // /private → apenas administradores (registrados em user_private)
+    if (matches(pathname, ["/private"])) {
+      const { data: adminRow, error: adminError } = await supabase
+        .from("user_private")
+        .select("id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      // Fail-open apenas se a própria consulta for bloqueada (RLS);
+      // "sem linha" de forma explícita = não é admin → bloqueia.
+      if (!adminError && !adminRow) {
+        return NextResponse.redirect(new URL("/", request.url));
+      }
+    }
+
+    // /parceiro → apenas parceiros ativos (ou admin)
+    if (matches(pathname, ["/parceiro"])) {
+      let isPartner = false;
+
+      const { data: partnerRow } = await supabase
+        .from("partners")
+        .select("id, active")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (partnerRow && partnerRow.active !== false) {
+        isPartner = true;
+      } else {
+        const { data: profileRow } = await supabase
+          .from("profiles")
+          .select("partner_id")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (profileRow?.partner_id) {
+          isPartner = true;
+        } else {
+          const { data: roleRow } = await supabase
+            .from("user_roles")
+            .select("role, partner_id")
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+          if (roleRow?.partner_id || roleRow?.role === "admin") {
+            isPartner = true;
+          }
+        }
+      }
+
+      if (!isPartner) {
+        return NextResponse.redirect(new URL("/", request.url));
+      }
     }
   } catch {
     const url = request.nextUrl.clone();

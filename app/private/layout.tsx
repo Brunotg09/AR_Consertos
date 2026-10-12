@@ -33,6 +33,7 @@ const adminNavLinks: { href: string; label: string; icon: React.ComponentType<{ 
   { href: "/private/clientes", label: "Clientes", icon: Users },
   { href: "/private/servicos", label: "Serviços", icon: Wrench },
   { href: "/private/parceiros", label: "Parceiros", icon: Building2 },
+  { href: "/private/parceiros/dashboard", label: "Dashboard Parcerias", icon: LayoutDashboard },
   { href: "/private/assinaturas", label: "Assinaturas", icon: RefreshCw },
   { href: "/private/banners", label: "Banners", icon: ImageIcon },
   { href: "/private/relatorios", label: "Relatórios", icon: FileText },

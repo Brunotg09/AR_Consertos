@@ -59,42 +59,41 @@ export default function ProdutoDetalhePage() {
   }, [trigger]);
 
   useEffect(() => {
-    if (product) {
-      const siteName = "A.R Conserto";
-      const title = `${product.name} | ${siteName} - Loja`;
-      document.title = title;
+    if (!product) return;
+    const siteName = "A.R Conserto";
+    const title = `${product.name} | ${siteName} - Loja`;
+    document.title = title;
 
-      const metaDesc = product.description
-        ? `${product.name}: ${product.description} Confira preço e disponibilidade!`
-        : `${product.name} - ${product.category || "Produto"} disponível na ${siteName}. Confira!`;
+    const metaDesc = product.description
+      ? `${product.name}: ${product.description} Confira preço e disponibilidade!`
+      : `${product.name} - ${product.category || "Produto"} disponível na ${siteName}. Confira!`;
 
-      let metaTag = document.querySelector('meta[name="description"]');
-      if (!metaTag) {
-        metaTag = document.createElement("meta");
-        metaTag.setAttribute("name", "description");
-        document.head.appendChild(metaTag);
-      }
-      metaTag.setAttribute("content", metaDesc.substring(0, 160));
-
-      const ogTitle = document.querySelector('meta[property="og:title"]');
-      if (ogTitle) ogTitle.setAttribute("content", title);
-
-      const ogDesc = document.querySelector('meta[property="og:description"]');
-      if (ogDesc) ogDesc.setAttribute("content", metaDesc.substring(0, 160));
-
-      const ogImage = product.images?.[0];
-      const ogImageTag = document.querySelector('meta[property="og:image"]');
-      if (ogImage && ogImageTag) ogImageTag.setAttribute("content", ogImage);
-
-      const canonicalUrl = `https://ar-consertos.vercel.app${productUrl(product.id, product.name)}`;
-      let canonicalTag = document.querySelector('link[rel="canonical"]');
-      if (!canonicalTag) {
-        canonicalTag = document.createElement("link");
-        canonicalTag.setAttribute("rel", "canonical");
-        document.head.appendChild(canonicalTag);
-      }
-      canonicalTag.setAttribute("href", canonicalUrl);
+    let metaTag = document.querySelector('meta[name="description"]');
+    if (!metaTag) {
+      metaTag = document.createElement("meta");
+      metaTag.setAttribute("name", "description");
+      document.head.appendChild(metaTag);
     }
+    metaTag.setAttribute("content", metaDesc.substring(0, 160));
+
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    if (ogTitle) ogTitle.setAttribute("content", title);
+
+    const ogDesc = document.querySelector('meta[property="og:description"]');
+    if (ogDesc) ogDesc.setAttribute("content", metaDesc.substring(0, 160));
+
+    const ogImage = product.images?.[0];
+    const ogImageTag = document.querySelector('meta[property="og:image"]');
+    if (ogImage && ogImageTag) ogImageTag.setAttribute("content", ogImage);
+
+    const canonicalUrl = `https://ar-consertos.vercel.app${productUrl(product.id, product.name)}`;
+    let canonicalTag = document.querySelector('link[rel="canonical"]');
+    if (!canonicalTag) {
+      canonicalTag = document.createElement("link");
+      canonicalTag.setAttribute("rel", "canonical");
+      document.head.appendChild(canonicalTag);
+    }
+    canonicalTag.setAttribute("href", canonicalUrl);
   }, [product]);
 
   const fetchProduct = useCallback(async () => {
@@ -109,22 +108,26 @@ export default function ProdutoDetalhePage() {
 
       if (error) {
         setProduct(null);
-      } else {
+      } else if (data?.id) {
         setProduct(data);
         setImgError(false);
         setQuantity(1);
 
         if (slugArray.length === 1) {
           const correctUrl = productUrl(data.id, data.name);
-          window.history.replaceState(null, "", correctUrl);
+          if (window.location.pathname !== correctUrl) {
+            window.history.replaceState(null, "", correctUrl);
+          }
         }
+      } else {
+        setProduct(null);
       }
     } catch (err) {
       setProduct(null);
     } finally {
       setLoading(false);
     }
-  }, [productId, slugArray]);
+  }, [productId]);
 
   useEffect(() => {
     fetchProduct();

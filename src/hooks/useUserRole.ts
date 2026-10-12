@@ -61,8 +61,24 @@ export function useUserRole(): UserRoleInfo {
         setRole(roleData.role as UserRole);
         setPartnerId(roleData.partner_id || null);
       } else {
-        setRole(null);
-        setPartnerId(null);
+        // Fallback: usuário é parceiro (pessoa física) via tabela partners
+        const { data: partnerData } = await withTimeout(
+          () => supabase
+            .from("partners")
+            .select("id")
+            .eq("user_id", user.id)
+            .maybeSingle(),
+          5000,
+          null
+        );
+
+        if (partnerData) {
+          setRole("partner_gestor");
+          setPartnerId(partnerData.id);
+        } else {
+          setRole(null);
+          setPartnerId(null);
+        }
       }
     } catch {
       setRole(null);

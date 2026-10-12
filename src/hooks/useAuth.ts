@@ -47,23 +47,39 @@ export function useAuth() {
           setUserRole(roleData.role as UserRole);
           setPartnerId(roleData.partner_id || null);
         } else {
-          // Fallback: check profiles.partner_id only if no role found
-          const { data: profileData } = await withTimeout(
+          // Fallback 1: novo modelo — partners.user_id
+          const { data: partnerData } = await withTimeout(
             () => supabase
-              .from("profiles")
-              .select("partner_id")
-              .eq("id", userId)
+              .from("partners")
+              .select("id")
+              .eq("user_id", userId)
               .maybeSingle(),
             5000,
             { data: null, error: null }
           );
 
-          if (!cancelled && profileData?.partner_id) {
+          if (!cancelled && partnerData) {
             setUserRole("partner_gestor");
-            setPartnerId(profileData.partner_id);
-          } else if (!cancelled) {
-            setUserRole(null);
-            setPartnerId(null);
+            setPartnerId(partnerData.id);
+          } else {
+            // Fallback 2: profiles.partner_id (legado)
+            const { data: profileData } = await withTimeout(
+              () => supabase
+                .from("profiles")
+                .select("partner_id")
+                .eq("id", userId)
+                .maybeSingle(),
+              5000,
+              { data: null, error: null }
+            );
+
+            if (!cancelled && profileData?.partner_id) {
+              setUserRole("partner_gestor");
+              setPartnerId(profileData.partner_id);
+            } else if (!cancelled) {
+              setUserRole(null);
+              setPartnerId(null);
+            }
           }
         }
       } catch {

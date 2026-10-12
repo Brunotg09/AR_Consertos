@@ -125,13 +125,18 @@ export default function RootLayout({
               {
                 "@context": "https://schema.org",
                 "@type": "LocalBusiness",
-                name: "AR Consertos",
+                "@id": "https://ar-consertos.vercel.app/#business",
+                name: "AR Consertos - Assistência Técnica & Eletrônica Inverter",
                 description:
-                  "Conserto de eletrodomésticos e eletrônica inverter em Itabaiana/SE",
+                  "Conserto de eletrodomésticos, linha branca e eletrônica inverter em Itabaiana/SE. Garantia de 90 dias desde 2017.",
                 url: "https://ar-consertos.vercel.app",
                 telephone: "+55-79-99944-6596",
+                image: "https://ar-consertos.vercel.app/logo_ArConsertos.webp",
+                logo: "https://ar-consertos.vercel.app/logo_ArConsertos.webp",
                 address: {
                   "@type": "PostalAddress",
+                  // TODO: completar com rua, bairro e CEP reais da oficina
+                  // (streetAddress e postalCode aumentam a chance de rich result local)
                   addressLocality: "Itabaiana",
                   addressRegion: "SE",
                   addressCountry: "BR",
@@ -141,12 +146,86 @@ export default function RootLayout({
                   latitude: -10.6842,
                   longitude: -37.4216,
                 },
-                areaServed: {
-                  "@type": "City",
-                  name: "Itabaiana",
-                },
+                areaServed: [
+                  { "@type": "City", name: "Itabaiana" },
+                  { "@type": "State", name: "Sergipe" },
+                ],
                 priceRange: "$$",
-                openingHours: "Mo-Fr 08:00-18:00, Sa 08:00-12:00",
+                openingHoursSpecification: [
+                  {
+                    "@type": "OpeningHoursSpecification",
+                    dayOfWeek: [
+                      "Monday",
+                      "Tuesday",
+                      "Wednesday",
+                      "Thursday",
+                      "Friday",
+                    ],
+                    opens: "08:00",
+                    closes: "18:00",
+                  },
+                  {
+                    "@type": "OpeningHoursSpecification",
+                    dayOfWeek: "Saturday",
+                    opens: "08:00",
+                    closes: "12:00",
+                  },
+                ],
+                brand: [
+                  "Samsung",
+                  "LG",
+                  "Brastemp",
+                  "Electrolux",
+                  "Consul",
+                  "Gree",
+                  "Midea",
+                ],
+              },
+              {
+                "@context": "https://schema.org",
+                "@type": "FAQPage",
+                mainEntity: [
+                  {
+                    "@type": "Question",
+                    name: "Vocês consertam ar condicionado em Itabaiana?",
+                    acceptedAnswer: {
+                      "@type": "Answer",
+                      text: "Sim! A AR Consertos realiza manutenção, instalação e conserto de ar condicionado split e inverter em Itabaiana/SE e região, com garantia de 90 dias.",
+                    },
+                  },
+                  {
+                    "@type": "Question",
+                    name: "Qual é a garantia dos serviços da AR Consertos?",
+                    acceptedAnswer: {
+                      "@type": "Answer",
+                      text: "Todos os serviços executados pela AR Consertos possuem garantia de 90 dias para o mesmo defeito.",
+                    },
+                  },
+                  {
+                    "@type": "Question",
+                    name: "Quais formas de pagamento são aceitas?",
+                    acceptedAnswer: {
+                      "@type": "Answer",
+                      text: "Aceitamos PIX, cartão de crédito e cartão de débito, com pagamento confirmado de forma segura via Mercado Pago.",
+                    },
+                  },
+                  {
+                    "@type": "Question",
+                    name: "Como faço para agendar um conserto?",
+                    acceptedAnswer: {
+                      "@type": "Answer",
+                      text: "Escolha o serviço no site e agende pelo WhatsApp (79) 99944-6596. Você acompanha o pedido pelo painel do cliente.",
+                    },
+                  },
+                  {
+                    "@type": "Question",
+                    name: "Quais marcas de eletrodomésticos vocês atendem?",
+                    acceptedAnswer: {
+                      "@type": "Answer",
+                      text: "Atendemos as principais marcas do mercado: Samsung, LG, Brastemp, Electrolux, Consul, Gree e Midea, entre outras.",
+                    },
+                  },
+                ],
               },
             ]),
           }}

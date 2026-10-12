@@ -48,7 +48,7 @@ export default function PartnerOSPage() {
   const partnerId = params.id as string;
   const orderId = params.orderId as string;
   const isPartnerRoute = pathname.startsWith("/parceiro");
-  const basePath = isPartnerRoute ? "/" : "/private/parceiros";
+  const basePath = isPartnerRoute ? "/parceiro" : "/private/parceiros";
 
   const [order, setOrder] = useState<ServiceOrder | null>(null);
   const [partnerName, setPartnerName] = useState("");
@@ -74,8 +74,46 @@ export default function PartnerOSPage() {
       if (error) throw error;
       setOrder(data);
       setTechNotes(data.tech_notes || "");
-      setBeforePhotos((data.photos || []).filter((p: any) => p.photo_type === "before").map((p: any) => p.url));
-      setAfterPhotos((data.photos || []).filter((p: any) => p.photo_type === "after").map((p: any) => p.url));
+
+      // Get signed URLs for photos
+      const photos = data.photos || [];
+      const beforePhotoUrls = photos.filter((p: any) => p.photo_type === "before").map((p: any) => p.url);
+      const afterPhotoUrls = photos.filter((p: any) => p.photo_type === "after").map((p: any) => p.url);
+
+      // Create signed URLs for each photo
+      const getSignedUrls = async (urls: string[]) => {
+        const signedUrls: string[] = [];
+        for (const url of urls) {
+          try {
+            // Extract path from URL
+            const pathMatch = url.match(/\/service-order-photos\/(.+)$/);
+            if (pathMatch) {
+              const path = pathMatch[1];
+              const { data: signedData } = await supabase.storage
+                .from("service-order-photos")
+                .createSignedUrl(path, 60 * 60 * 24); // 24 hours
+              if (signedData?.signedUrl) {
+                signedUrls.push(signedData.signedUrl);
+              } else {
+                signedUrls.push(url); // fallback
+              }
+            } else {
+              signedUrls.push(url);
+            }
+          } catch {
+            signedUrls.push(url); // fallback
+          }
+        }
+        return signedUrls;
+      };
+
+      const [beforeSigned, afterSigned] = await Promise.all([
+        getSignedUrls(beforePhotoUrls),
+        getSignedUrls(afterPhotoUrls),
+      ]);
+
+      setBeforePhotos(beforeSigned);
+      setAfterPhotos(afterSigned);
       setHasSignature(!!data.client_signature);
 
       if (data.partner_id) {
@@ -155,10 +193,35 @@ export default function PartnerOSPage() {
         .from("service-order-photos")
         .upload(fileName, file, { contentType: file.type, upsert: true });
       if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from("service-order-photos").getPublicUrl(fileName);
-      if (type === "before") setBeforePhotos((prev) => [...prev, urlData.publicUrl]);
-      else setAfterPhotos((prev) => [...prev, urlData.publicUrl]);
-      toast.success(`Foto ${type === "before" ? "ANTES" : "DEPOIS"} enviada!`);
+      // Get signed URL instead of public URL (bucket is private)
+      const { data: signedData } = await supabase.storage
+        .from("service-order-photos")
+        .createSignedUrl(fileName, 60 * 60 * 24 * 365); // 1 year
+      const signedUrl = signedData?.signedUrl || supabase.storage.from("service-order-photos").getPublicUrl(fileName).data.publicUrl;
+
+      // Save to database immediately
+      const photoEntry = { url: signedUrl, photo_type: type, uploaded_at: new Date().toISOString() };
+      
+      // Update local state immediately
+      if (type === "before") setBeforePhotos((prev) => [...prev, signedUrl]);
+      else setAfterPhotos((prev) => [...prev, signedUrl]);
+
+      // Persist to database
+      const { data: currentOrder } = await supabase
+        .from("service_orders")
+        .select("photos")
+        .eq("id", orderId)
+        .single();
+      
+      const existingPhotos = currentOrder?.photos || [];
+      const updatedPhotos = [...existingPhotos, photoEntry];
+      
+      await supabase
+        .from("service_orders")
+        .update({ photos: updatedPhotos, updated_at: new Date().toISOString() })
+        .eq("id", orderId);
+
+      toast.success(`Foto ${type === "before" ? "ANTES" : "DEPOIS"} salva!`);
     } catch (e: any) {
       toast.error(e.message || "Erro ao enviar foto.");
     } finally {
@@ -166,22 +229,75 @@ export default function PartnerOSPage() {
     }
   };
 
-  const removePhoto = (url: string, type: "before" | "after") => {
+  const removePhoto = async (url: string, type: "before" | "after") => {
+    // Update local state immediately
     if (type === "before") setBeforePhotos((prev) => prev.filter((u) => u !== url));
     else setAfterPhotos((prev) => prev.filter((u) => u !== url));
+
+    // Persist removal to database
+    try {
+      const { data: currentOrder } = await supabase
+        .from("service_orders")
+        .select("photos")
+        .eq("id", orderId)
+        .single();
+      
+      const existingPhotos = currentOrder?.photos || [];
+      const updatedPhotos = existingPhotos.filter((p: any) => p.url !== url);
+      
+      await supabase
+        .from("service_orders")
+        .update({ photos: updatedPhotos, updated_at: new Date().toISOString() })
+        .eq("id", orderId);
+    } catch (e) {
+      console.error("Error removing photo from DB:", e);
+    }
   };
 
   const startService = async () => {
     setSaving(true);
     try {
-      const { error } = await supabase.rpc("tech_checkin", {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        console.error("Session error:", sessionError);
+        throw new Error("Erro ao obter sessão: " + sessionError.message);
+      }
+      if (!session) {
+        toast.error("Faça login como técnico para iniciar o atendimento");
+        return;
+      }
+
+      console.log("Current user:", session.user.id);
+      console.log("Order ID:", orderId);
+
+      // First check the order details
+      const { data: orderData, error: orderError } = await supabase
+        .from("service_orders")
+        .select("id, technician_id, status, client_cpf")
+        .eq("id", orderId)
+        .single();
+      
+      if (orderError) {
+        console.error("Order fetch error:", orderError);
+        throw new Error("Erro ao buscar OS: " + orderError.message);
+      }
+      
+      console.log("Order data:", orderData);
+      console.log("User matches technician?", orderData?.technician_id === session.user.id);
+
+      const { error, data } = await supabase.rpc("tech_checkin", {
         p_so_id: orderId,
         p_client_cpf_input: "",
       });
-      if (error) throw error;
+      if (error) {
+        console.error("tech_checkin error:", JSON.stringify(error, null, 2));
+        throw new Error(error.message || error.details || error.hint || "Erro ao iniciar atendimento");
+      }
+      console.log("tech_checkin result:", data);
       toast.success("Atendimento iniciado!");
       fetchOrder();
     } catch (e: any) {
+      console.error("startService error:", e);
       toast.error(e.message || "Erro ao iniciar.");
     } finally {
       setSaving(false);

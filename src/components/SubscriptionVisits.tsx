@@ -10,7 +10,7 @@ import { ptBR } from "date-fns/locale";
 interface Subscription {
   id: string;
   service_id: string | null;
-  partner_id: string | null;
+  assigned_partner_id: string | null;
   visit_interval: string;
   billing_day: string | number;
   status: string;
@@ -111,7 +111,7 @@ export default function SubscriptionVisits({ subscription, isPartnerService, onC
           )}
         </div>
 
-        {isPartnerService && subscription.partner_id && !hasCurrentMonthOS && subscription.status === "active" && (
+        {isPartnerService && subscription.assigned_partner_id && !hasCurrentMonthOS && subscription.status === "active" && (
           <button
             onClick={() => onCreateOS?.(now)}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[#3B82F6] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#3B82F6]/80"
@@ -143,7 +143,7 @@ export default function SubscriptionVisits({ subscription, isPartnerService, onC
                   key={visit.id}
                   onClick={() => {
                     if (hasOS) {
-                      window.open(`${isPartnerRoute ? "/parceiro" : "/private/parceiros"}/${subscription.partner_id}/os/${visit.service_order_id}`, "_blank");
+                      window.open(isPartnerRoute ? `/parceiro/servicos/${visit.service_order_id}` : `/private/parceiros/${subscription.assigned_partner_id}/os/${visit.service_order_id}`, "_blank");
                     } else if (isPartnerService && subscription.status === "active") {
                       onCreateOS?.(visitDate);
                     }
