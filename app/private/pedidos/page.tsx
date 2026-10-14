@@ -1177,16 +1177,10 @@ export default function PedidosPage() {
     if (!selectedOrder) return;
 
     try {
-      // Restore stock for products
-      for (const item of selectedOrder.items || []) {
-        if (item.item_type === "produto") {
-          await supabase.rpc("managed_increment_stock", {
-            product_id: parseInt(item.item_id),
-            qty: item.quantity
-          });
-        }
-      }
-
+      // Estoque NÃO é incrementado aqui de propósito: o CASCADE que apaga
+      // `order_items` dispara o trigger `on_cancel_or_delete_item`, que devolve
+      // a quantidade UMA única vez. Estornar manualmente + trigger = estoque
+      // voltando em dobro (mais do que o valor original).
       const { error } = await supabase
         .from("orders")
         .delete()

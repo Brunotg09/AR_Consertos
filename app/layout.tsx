@@ -1,6 +1,6 @@
 import { ChatProvider } from "@/components/ChatProvider";
 import { ConditionalLayout } from "@/components/ConditionalLayout";
-import { CookieConsent } from "@/components/CookieConsent";
+import { GoogleAnalytics } from "@/components/GoogleAnalytics";
 import { Toaster } from "@/components/ui/sonner";
 import { CartProvider } from "@/contexts/CartContext";
 import { TwoFAProvider } from "@/contexts/TwoFAProvider";
@@ -17,18 +17,34 @@ export const metadata: Metadata = {
     template: "%s | AR Consertos",
   },
   description:
-    "AR Consertos em Itabaiana/SE. Conserto de eletrodomésticos, linha branca, eletrônica avançada inverter. Garantia de 90 dias. Desde 2017.",
+    "Assistência técnica em Itabaiana/SE. Conserto de ar condicionado, geladeira, máquina de lavar, microondas e linha branca. Orçamento grátis e garantia de 90 dias. AR Consertos!",
   keywords: [
-    "conserto eletrodomésticos",
+    // Principal + localização (o que o cliente digita no Google)
+    "assistência técnica em Itabaiana",
+    "conserto de ar condicionado em Itabaiana",
+    "conserto de eletrodomésticos em Itabaiana",
+    "assistência técnica de eletrodomésticos Sergipe",
+    "conserto de ar condicionado Sergipe",
+    // Serviços específicos (intenção de contratação)
+    "conserto de ar condicionado split",
+    "manutenção de ar condicionado",
+    "instalação de ar condicionado",
+    "higienização de ar condicionado",
+    "conserto de geladeira",
+    "conserto de máquina de lavar",
+    "conserto de microondas",
+    "conserto de fogão e cooktop",
+    "conserto de linha branca",
     "eletrônica inverter",
-    "conserto ar condicionado",
-    "conserto geladeira",
-    "conserto máquina de lavar",
-    "linha branca",
+    "inversor solar",
+    "conserto de eletrônica avançada",
+    // Gatilhos que atraem público
+    "orçamento grátis",
+    "garantia de 90 dias",
+    "conserto perto de mim",
+    "AR Consertos",
     "Itabaiana",
     "Sergipe",
-    "AR Consertos",
-    "assistência técnica",
   ],
   authors: [{ name: "AR Consertos" }],
   creator: "AR Consertos",
@@ -135,8 +151,9 @@ export default function RootLayout({
                 logo: "https://ar-consertos.vercel.app/logo_ArConsertos.webp",
                 address: {
                   "@type": "PostalAddress",
-                  // TODO: completar com rua, bairro e CEP reais da oficina
-                  // (streetAddress e postalCode aumentam a chance de rich result local)
+                  // TODO: adicionar streetAddress (rua) e bairro quando souber —
+                  // completa ainda mais o rich result local
+                  postalCode: "49500-000",
                   addressLocality: "Itabaiana",
                   addressRegion: "SE",
                   addressCountry: "BR",
@@ -180,6 +197,7 @@ export default function RootLayout({
                   "Gree",
                   "Midea",
                 ],
+                sameAs: ["https://www.instagram.com/a.rconsertos/"],
               },
               {
                 "@context": "https://schema.org",
@@ -242,7 +260,7 @@ export default function RootLayout({
             </TwoFAProvider>
           </CartProvider>
           <Toaster />
-          <CookieConsent />
+          <GoogleAnalytics />
         </ThemeProvider>
       </body>
     </html>

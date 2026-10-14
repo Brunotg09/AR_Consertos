@@ -24,6 +24,15 @@ function getStoredConsent(): CookieConsent | null {
 
 function saveConsent(consent: CookieConsent) {
   localStorage.setItem(COOKIE_KEY, JSON.stringify(consent));
+  // Sincroniza com a chave lida pelo GoogleAnalytics (ar_consertos_cookie_consent
+  // === "accepted" quando analytics permitido) e avisa os scripts de terceiros.
+  // Antes este banner gravava só a chave própria (ar_conserto_cookie_consent), então
+  // o GA4 nunca recebia o consentimento e nunca rodava.
+  localStorage.setItem(
+    "ar_consertos_cookie_consent",
+    consent.analytics ? "accepted" : "rejected"
+  );
+  window.dispatchEvent(new Event("cookie-consent-changed"));
 }
 
 export function CookieBanner() {

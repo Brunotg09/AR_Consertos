@@ -1,7 +1,50 @@
+import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/lib/supabase-admin";
 import { createServerSupabase } from "@/lib/supabase-server";
 import { notifyPartnerEvent } from "@/lib/notify-server";
+
+/**
+ * Valida a assinatura HMAC-SHA256 enviada pelo Mercado Pago no header `x-signature`
+ * (formato: `ts=<unix>,v1=<hex>`), conforme a documentação:
+ *   manifest = `id:[data.id];request-id:[x-request-id];ts:[ts];`
+ *   assinatura = HMAC-SHA256(MP_WEBHOOK_SECRET, manifest) em hex.
+ *
+ * Sem `MP_WEBHOOK_SECRET` configurado NÃO valida (só loga) — para não travar
+ * o ambiente de teste. Em produção a variável DEVE estar setada.
+ */
+function verifyMpSignature(req: Request, url: URL, bodyDataId: string | null): boolean {
+  const secret = process.env.MP_WEBHOOK_SECRET;
+  if (!secret) return true; // não configurado — tratado pelo chamador com warning
+
+  const header = req.headers.get("x-signature") || "";
+  const requestId = req.headers.get("x-request-id") || "";
+
+  let ts = "";
+  let v1 = "";
+  for (const part of header.split(",")) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    const key = part.slice(0, eq).trim();
+    const value = part.slice(eq + 1).trim();
+    if (key === "ts") ts = value;
+    if (key === "v1") v1 = value;
+  }
+  if (!ts || !v1) return false;
+
+  // O id assinado é o data.id (query ou body) — não o id da notificação.
+  const dataId = url.searchParams.get("data.id") || bodyDataId || "";
+  const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(manifest)
+    .digest("hex");
+
+  // Comparação em tempo constante (evita timing attack)
+  const a = Buffer.from(expected, "utf8");
+  const b = Buffer.from(v1, "utf8");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 /**
  * POST /api/mercadopago/webhook
@@ -19,6 +62,38 @@ export async function POST(req: Request) {
     }
     if (!id) {
       return NextResponse.json({ ok: true, ignored: true });
+    }
+
+    // data.id do body (fallback p/ assinatura quando não vem na query)
+    let bodyDataId: string | null = null;
+    try {
+      const clone = req.clone();
+      const body = await clone.json();
+      bodyDataId = body?.data?.id != null ? String(body.data.id) : null;
+    } catch {
+      /* sem body JSON — segue só com a query */
+    }
+
+    if (!process.env.MP_WEBHOOK_SECRET) {
+      // Em produção, sem segredo o webhook NÃO pode aceitar eventos (fail-closed):
+      // qualquer um poderia postar ?id=<pagamento> e ter o pedido marcado como pago.
+      if (process.env.NODE_ENV === "production") {
+        console.error(
+          "[MP/webhook] MP_WEBHOOK_SECRET ausente em produção — rejeitando (fail-closed)"
+        );
+        return NextResponse.json(
+          { error: "Webhook não configurado" },
+          { status: 503 }
+        );
+      }
+      console.warn(
+        "[MP/webhook] ⚠️ MP_WEBHOOK_SECRET ausente — assinatura NÃO validada ( configure em produção! )"
+      );
+    } else if (!verifyMpSignature(req, url, bodyDataId)) {
+      console.warn("[MP/webhook] assinatura inválida — requisição rejeitada", {
+        requestId: req.headers.get("x-request-id"),
+      });
+      return NextResponse.json({ error: "Assinatura inválida" }, { status: 401 });
     }
 
     const accessToken = process.env.MP_ACCESS_TOKEN;
@@ -58,15 +133,62 @@ export async function POST(req: Request) {
     if (meta.order_id) {
       const prodOrderId = String(meta.order_id);
       if (payment.status === "approved") {
+        // Verificação de VALOR (fecha exploit de pagar centavos): só marca como
+        // pago se o pagamento cobre o restante do pedido, usando preços
+        // autoritativos (products.price), não order_items.price do cliente.
+        const { data: wItems } = await supabase
+          .from("order_items")
+          .select("item_id, quantity, payment_status")
+          .eq("order_id", prodOrderId)
+          .eq("item_type", "produto");
+        const wPids = Array.from(
+          new Set(
+            (wItems || []).map((x) => Number(x.item_id)).filter((n) => Number.isFinite(n))
+          )
+        );
+        const { data: wProds } = await supabase
+          .from("products")
+          .select("id, price")
+          .in("id", wPids);
+        const wMap = new Map(
+          (wProds || []).map((p) => [Number(p.id), Number(p.price || 0)])
+        );
+        const wRp = (x: { item_id?: string | number }) =>
+          wMap.get(Number(x.item_id)) ?? 0;
+        const wTotal = (wItems || []).reduce(
+          (s, x) => s + wRp(x) * Number(x.quantity || 0),
+          0
+        );
+        const wPaid = (wItems || [])
+          .filter((x) => x.payment_status === "pago")
+          .reduce((s, x) => s + wRp(x) * Number(x.quantity || 0), 0);
+        const wRemaining = Math.round((wTotal - wPaid) * 100) / 100;
+        const paidAmt = Number(payment.transaction_amount || 0);
+        if (wRemaining > 0 && paidAmt < wRemaining - 0.01) {
+          console.warn(
+            "[MP/webhook] pagamento não cobre o restante — NÃO marca como pago",
+            { prodOrderId, paidAmt, wRemaining }
+          );
+          return NextResponse.json({ ok: true, partial: true });
+        }
+
+        // Método REAL usado (o cliente pode ter trocado dentro do modal).
+        // payment_type_id do MP: bank_transfer=PIX, debit_card, credit_card…
+        // O CHECK de orders/order_items aceita apenas dinheiro/pix/cartao.
+        const mpType = String(payment.payment_type_id || "");
+        const syncedMethod =
+          mpType === "bank_transfer" || mpType === "pix"
+            ? "pix"
+            : "cartao";
         // Grava o id do MP p/ idempotência (a orders não tem payment_status)
         const { error: oErr } = await supabase
           .from("orders")
-          .update({ mp_payment_id: String(payment.id) })
+          .update({ mp_payment_id: String(payment.id), payment_method: syncedMethod })
           .eq("id", prodOrderId);
         // Fonte de verdade: itens de produto viram "pago" (idempotente)
         const { error: iErr } = await supabase
           .from("order_items")
-          .update({ payment_status: "pago" })
+          .update({ payment_status: "pago", payment_method: syncedMethod })
           .eq("order_id", prodOrderId)
           .eq("item_type", "produto")
           .neq("payment_status", "pago");

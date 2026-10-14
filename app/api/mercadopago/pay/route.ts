@@ -101,7 +101,7 @@ export async function POST(req: Request) {
 
       if (!order) {
         return NextResponse.json(
-          { error: "Pedido não encontrado", detail: orderError?.message || null },
+          { error: "Pedido não encontrado" },
           { status: 404 }
         );
       }
@@ -111,7 +111,7 @@ export async function POST(req: Request) {
 
       const { data: items, error: itemsError } = await db
         .from("order_items")
-        .select("price, quantity, payment_status")
+        .select("item_id, quantity, payment_status")
         .eq("order_id", orderId)
         .eq("item_type", "produto");
 
@@ -119,13 +119,33 @@ export async function POST(req: Request) {
         console.log("[MP/pay] order_items error:", itemsError.message);
       }
 
+      // Preço AUTORITATIVO: recalcula a partir de products.price. Não confia em
+      // order_items.price (escrito pelo cliente) — sem isso, alguém poderia gravar
+      // preço 0,01 e pagar centavos por um pedido de valor real.
+      const productIds = Array.from(
+        new Set(
+          (items || [])
+            .map((it) => Number(it.item_id))
+            .filter((n) => Number.isFinite(n))
+        )
+      );
+      const { data: products } = await db
+        .from("products")
+        .select("id, price")
+        .in("id", productIds);
+      const priceById = new Map(
+        (products || []).map((p) => [Number(p.id), Number(p.price || 0)])
+      );
+      const realPrice = (it: { item_id?: string | number }) =>
+        priceById.get(Number(it.item_id)) ?? 0;
+
       const productTotal = (items || []).reduce(
-        (sum, it) => sum + Number(it.price || 0) * Number(it.quantity || 0),
+        (sum, it) => sum + realPrice(it) * Number(it.quantity || 0),
         0
       );
       const paidTotal = (items || [])
         .filter((it) => it.payment_status === "pago")
-        .reduce((sum, it) => sum + Number(it.price || 0) * Number(it.quantity || 0), 0);
+        .reduce((sum, it) => sum + realPrice(it) * Number(it.quantity || 0), 0);
       const remaining = Math.round((productTotal - paidTotal) * 100) / 100;
 
       console.log("[MP/pay] product totals:", {
@@ -148,9 +168,11 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
-      if (paymentMethod === "credit_card" && Math.abs(amount - remaining) > 0.01) {
+      // Produtos são pagos de uma vez (evita pagamento parcial ser tratado como
+      // pago integral pelo webhook).
+      if (Math.abs(amount - remaining) > 0.01) {
         return NextResponse.json(
-          { error: "Cartão de crédito exige valor integral" },
+          { error: "Produtos devem ser pagos no valor integral" },
           { status: 400 }
         );
       }
@@ -178,9 +200,39 @@ export async function POST(req: Request) {
 
       if (!so) {
         return NextResponse.json(
-          { error: "Serviço não encontrado", detail: soError?.message || null },
+          { error: "Serviço não encontrado" },
           { status: 404 }
         );
+      }
+
+      // Autorização (fecha IDOR): só o DONO do pedido vinculado, o parceiro
+      // responsável ou um admin pode gerar pagamento desta OS.
+      let authorized = false;
+      if (so.order_id) {
+        const { data: ownerOrder } = await db
+          .from("orders")
+          .select("user_id")
+          .eq("id", so.order_id)
+          .maybeSingle();
+        if (ownerOrder?.user_id === user.id) authorized = true;
+      }
+      if (!authorized) {
+        const partnerId = so.accepted_by || so.partner_id;
+        if (partnerId) {
+          const { data: partner } = await db
+            .from("partners")
+            .select("user_id")
+            .eq("id", partnerId)
+            .maybeSingle();
+          if (partner?.user_id === user.id) authorized = true;
+        }
+      }
+      if (!authorized) {
+        const { data: isAdmin } = await supabase.rpc("is_admin");
+        if (isAdmin === true) authorized = true;
+      }
+      if (!authorized) {
+        return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
       }
 
       const remaining = Number(so.remaining_amount ?? (so.total || 0) - (so.amount_paid || 0));
@@ -211,17 +263,31 @@ export async function POST(req: Request) {
       };
       externalRef = serviceOrderId!;
 
-      // Split (exige conta de recebedor conectada)
+      // Split (exige conta de recebedor conectada via OAuth)
+      //
+      // Fluxo escolhido: pagamento criado com o TOKEN DA PLATAFORMA +
+      // `application_fee` (comissão) + `collector_id` (id do vendedor, obtido
+      // via OAuth). Assim o webhook continua funcionando (ele busca o
+      // pagamento com MP_ACCESS_TOKEN). O access_token do parceiro fica salvo
+      // em partner_mp_tokens p/ consultas/reembolso futuros, mas NÃO é usado
+      // como Bearer aqui — usá-lo criaria o pagamento na conta do vendedor e a
+      // plataforma não conseguiria verificá-lo.
       if (so.accepted_by || so.partner_id) {
+        const partnerId = so.accepted_by || so.partner_id;
         const { data: partner } = await db
           .from("partners")
           .select("mp_account_id")
-          .eq("id", so.accepted_by || so.partner_id)
+          .eq("id", partnerId)
           .maybeSingle();
 
         if (partner?.mp_account_id && applicationFee > 0) {
           paymentPayload.application_fee = applicationFee;
-          paymentPayload.mp_account_id = partner.mp_account_id;
+          // collector_id: conta que recebe o valor líquido (vendedor)
+          paymentPayload.collector_id = Number(partner.mp_account_id) || undefined;
+          if (!paymentPayload.collector_id) {
+            // fallback legado p/ quando mp_account_id não é numérico
+            paymentPayload.mp_account_id = partner.mp_account_id;
+          }
         }
       }
     }
@@ -261,7 +327,7 @@ export async function POST(req: Request) {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${accessToken}`,
-        "X-Idempotency-Key": `${externalRef}-${amount}-${Date.now()}`,
+        "X-Idempotency-Key": `${externalRef}-${amount}`,
       },
       body: JSON.stringify(paymentPayload),
     });
@@ -297,14 +363,20 @@ export async function POST(req: Request) {
     if (payment.status === "approved") {
       if (orderId) {
         // Só grava mp_payment_id (a orders não tem payment_status)
+        // + sincroniza payment_method com o método REALMENTE usado no modal
+        // (o cliente pode trocar de método dentro do modal — ex.: checkout em
+        // dinheiro mas pagou por cartão). O CHECK da coluna aceita apenas
+        // dinheiro/pix/cartao; debit_card vira cartao.
+        const syncedMethod =
+          paymentMethod === "pix" ? "pix" : "cartao";
         const { error: updErr } = await db
           .from("orders")
-          .update({ mp_payment_id: String(payment.id) })
+          .update({ mp_payment_id: String(payment.id), payment_method: syncedMethod })
           .eq("id", orderId);
         // Itens de produto viram "pago" (idempotente: só os que ainda não estão)
         const { error: itemErr } = await db
           .from("order_items")
-          .update({ payment_status: "pago" })
+          .update({ payment_status: "pago", payment_method: syncedMethod })
           .eq("order_id", orderId)
           .eq("item_type", "produto")
           .neq("payment_status", "pago");
@@ -313,14 +385,15 @@ export async function POST(req: Request) {
           itemUpdateError: itemErr?.message || null,
         });
       } else {
-        // RPCs preservam o comportamento original (client anon)
-        await supabase.rpc("apply_so_payment", {
+        // RPCs via service_role (db) — a migration de segurança exige
+        // service_role/admin para apply_so_payment.
+        await db.rpc("apply_so_payment", {
           p_service_order_id: serviceOrderId,
           p_amount: amount,
           p_payment_method: paymentMethod,
           p_mp_payment_id: String(payment.id),
         });
-        await supabase.rpc("notify_payment_received", {
+        await db.rpc("notify_payment_received", {
           p_service_order_id: serviceOrderId,
         });
       }

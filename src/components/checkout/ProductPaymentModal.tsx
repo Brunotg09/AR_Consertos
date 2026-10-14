@@ -12,7 +12,6 @@ import {
   Sparkles,
   ArrowRight,
   Smartphone,
-  Package,
 } from "lucide-react";
 import {
   Dialog,
@@ -35,8 +34,6 @@ interface Props {
   initialMethod?: Method;
   /** Chamado quando o cliente paga OU decide pagar depois (checkout finaliza e redireciona). */
   onComplete: () => void;
-  /** Chamado quando o cliente cancela o pedido e volta ao carrinho. */
-  onCancel?: () => void;
 }
 
 type Method = "pix" | "debit_card" | "credit_card";
@@ -156,6 +153,7 @@ function StepDot({ n, label, active, done }: { n: number; label: string; active:
  * PIX: gera QR e espera confirmação (webhook). Cartão: tokeniza via SDK do MP.
  * "Pagar depois" mantém o pedido pendente (estoque reservado) — paga no /historico.
  * O fechamento externo (clique fora / ESC / X) é bloqueado: força escolha explícita.
+ * Não existe "cancelar" aqui — a saída é sempre "Pagar depois" (pedido fica pendente).
  */
 export default function ProductPaymentModal({
   open,
@@ -164,7 +162,6 @@ export default function ProductPaymentModal({
   amount,
   initialMethod,
   onComplete,
-  onCancel,
 }: Props) {
   const [method, setMethod] = useState<Method>(() => {
     if (typeof window !== "undefined") {
@@ -247,49 +244,6 @@ export default function ProductPaymentModal({
       /* ignore */
     }
     onComplete();
-  };
-
-  // CANCELAR PEDIDO E VOLTAR AO CARRINHO: cancela o pedido no banco,
-  // libera o estoque reservado, limpa o estado e fecha o modal.
-  // O carrinho NÃO é limpo (persiste no localStorage) — usuário continua editando.
-  const handleCancelOrder = async () => {
-    setLoading(true);
-    try {
-      // 1) Libera estoque dos itens do pedido (mesma RPC do checkout)
-      const { data: items } = await supabase
-        .from("order_items")
-        .select("product_id, quantity")
-        .eq("order_id", orderId)
-        .eq("item_type", "produto");
-      if (items && items.length > 0) {
-        const releaseItems = items.map((it) => ({
-          product_id: it.product_id,
-          qty: it.quantity,
-        }));
-        await supabase.rpc("release_stock", { items: releaseItems });
-      }
-      // 2) Marca pedido como cancelado (status) para não ficar órfão
-      await supabase
-        .from("orders")
-        .update({ status: "cancelado" })
-        .eq("id", orderId);
-      // 3) Limpa estado local
-      reset();
-      try {
-        sessionStorage.removeItem(methodKey(orderId));
-      } catch {
-        /* ignore */
-      }
-      // 4) Fecha modal e avisa checkout pra limpar pendingPayment (sem finalizar)
-      onOpenChange(false);
-      onCancel?.();
-      toast.info("Pedido cancelado — estoque liberado. Volte ao carrinho.");
-    } catch (e) {
-      console.error("[MP/modal] cancel order erro:", e);
-      toast.error("Falha ao cancelar pedido. Tente novamente.");
-    } finally {
-      setLoading(false);
-    }
   };
 
   // Polling do status do pedido (webhook/MP marcam order_items.payment_status = "pago")
@@ -710,18 +664,6 @@ export default function ProductPaymentModal({
         {/* Rodapé / ações */}
         {!paid && (
           <div className="space-y-2 border-t border-white/10 px-6 py-4">
-            {/* Botão "Cancelar e voltar ao carrinho" na etapa 1 */}
-            {(step === 1) && (
-              <button
-                type="button"
-                onClick={handleCancelOrder}
-                disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white/70 transition-colors hover:bg-white/[0.06] disabled:opacity-50"
-              >
-                <Package className="h-4 w-4" />
-                Cancelar pedido e voltar ao carrinho
-              </button>
-            )}
             {/* Botão "Voltar" na etapa 2 (pagamento) */}
             {(step === 2) && (
               <button

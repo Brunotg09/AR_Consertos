@@ -1,19 +1,19 @@
 "use client";
 
-import { ServiceIcon } from "@/components/ServiceIcon";
-import { useCart, CartServiceItem, getServicePrice } from "@/contexts/CartContext";
-import { useAuth } from "@/hooks/useAuth";
 import { useFloatingWidget } from "@/components/FloatingWidget";
+import { ServiceIcon } from "@/components/ServiceIcon";
+import { CartServiceItem, getServicePrice, useCart } from "@/contexts/CartContext";
+import { useAuth } from "@/hooks/useAuth";
 import {
   AlertTriangle,
   ArrowRight,
   Minus,
   Package,
   Plus,
+  RefreshCw,
   ShoppingCart,
   Trash2,
   Wrench,
-  RefreshCw,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -49,7 +49,7 @@ export default function CarrinhoPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-4xl px-4 py-16 sm:px-6 lg:px-8 ">
       <div className="flex items-center gap-3">
         <ShoppingCart className="h-6 w-6" style={{ color: "#C9A84C" }} />
         <h1 className="font-bebas text-3xl tracking-wide text-white sm:text-4xl">

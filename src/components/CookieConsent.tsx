@@ -17,11 +17,14 @@ export function CookieConsent() {
 
   const accept = () => {
     localStorage.setItem(COOKIE_KEY, "accepted");
+    // Avisa scripts de terceiros (ex.: GA4) que o consentimento mudou
+    window.dispatchEvent(new Event("cookie-consent-changed"));
     setShow(false);
   };
 
   const reject = () => {
     localStorage.setItem(COOKIE_KEY, "rejected");
+    window.dispatchEvent(new Event("cookie-consent-changed"));
     setShow(false);
   };
 

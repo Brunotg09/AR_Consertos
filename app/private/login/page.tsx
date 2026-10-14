@@ -10,13 +10,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, AlertCircle, ArrowLeft } from "lucide-react";
 
-async function checkIsAdmin(userId: string): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("user_private")
-    .select("id")
-    .eq("id", userId)
-    .maybeSingle();
-  return !error && !!data;
+async function checkIsAdmin(_userId: string): Promise<boolean> {
+  // Checa admin de verdade via is_admin() (user_roles). Antes checava se existia
+  // linha em user_private — e todo cadastro cria uma linha, então todo usuário passava.
+  const { data, error } = await supabase.rpc("is_admin");
+  return !error && data === true;
 }
 
 export default function PrivateLoginPage() {

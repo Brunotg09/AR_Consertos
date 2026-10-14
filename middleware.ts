@@ -135,17 +135,15 @@ export async function middleware(request: NextRequest) {
 
     // ---- Role gates (painéis) — bloqueio no servidor, antes de baixar a página ----
 
-    // /private → apenas administradores (registrados em user_private)
+    // /private → apenas administradores
     if (matches(pathname, ["/private"])) {
-      const { data: adminRow, error: adminError } = await supabase
-        .from("user_private")
-        .select("id")
-        .eq("id", user.id)
-        .maybeSingle();
+      // Checa admin de verdade via is_admin() (SECURITY DEFINER, lê user_roles).
+      // Antes checava se existia QUALQUER linha em user_private — e todo cadastro
+      // cria uma linha, então todo usuário logado passava. Agora é is_admin() real.
+      const { data: isAdmin, error: adminError } = await supabase.rpc("is_admin");
 
-      // Fail-open apenas se a própria consulta for bloqueada (RLS);
-      // "sem linha" de forma explícita = não é admin → bloqueia.
-      if (!adminError && !adminRow) {
+      // Fail-CLOSED: erro na checa ou resultado diferente de true → bloqueia.
+      if (adminError || isAdmin !== true) {
         return NextResponse.redirect(new URL("/", request.url));
       }
     }
@@ -198,5 +196,9 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/).*)"],
+  // Só roda em rotas de PÁGINA — não em assets estáticos (imagens, vídeos,
+  // sw.js, fontes). Isso evita um round-trip de auth ao Supabase por asset.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon\\.ico|api/|sw\\.js|workbox-.*|manifest\\.json|robots\\.txt|sitemap\\.xml|icons/|videos/|screenshots/|logo_.*|.*\\.(?:png|jpe?g|gif|webp|avif|svg|ico|webm|mp4|woff2?|ttf)$).*)",
+  ],
 };

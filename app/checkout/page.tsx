@@ -293,14 +293,6 @@ export default function CheckoutPage() {
     finalizeCheckout(poId, poSubIds, poName);
   };
 
-  /** Chamado pelo modal quando o cliente CANCELA o pedido e volta ao carrinho. */
-  const handleCancelPayment = () => {
-    if (!pendingPayment) return;
-    setPendingPayment(null);
-    persistPendingPayment(null);
-    // Não finaliza — carrinho permanece, usuário continua editando
-  };
-
   const handleSubmit = async () => {
     setError("");
 
@@ -484,10 +476,14 @@ export default function CheckoutPage() {
 
         if (itemsError) {
           setError("Erro ao salvar itens do pedido.");
+          // Nenhum item foi inserido (insert é atômico), então não há trigger de
+          // estoque a disparar — o estorno tem que ser explícito aqui.
           if (productItemsData.length > 0) {
             const releaseItems = products.map((p) => ({ product_id: p.productId, qty: p.quantity }));
             await supabase.rpc("release_stock", { items: releaseItems });
           }
+          // Apaga o pedido órfão (sem itens) para não poluir o histórico.
+          await supabase.from("orders").delete().eq("id", orderId);
           return;
         }
       }
@@ -571,6 +567,11 @@ export default function CheckoutPage() {
 
       if (soError) {
         setError("Erro ao criar ordem de serviço do parceiro.");
+        // Checkout falhou: apaga o pedido para o trigger de estoque devolver a
+        // reserva UMA única vez. Sem isso o estoque ficava reservado para sempre.
+        if (orderId) {
+          await supabase.from("orders").delete().eq("id", orderId);
+        }
         return;
       }
     }
@@ -600,10 +601,11 @@ export default function CheckoutPage() {
 
       if (soError) {
         setError("Erro ao criar ordem de serviço do parceiro.");
-        if (productItems.length > 0) {
-          const releaseItems = productItems.map((p) => ({ product_id: p.productId, qty: p.quantity }));
-          await supabase.rpc("release_stock", { items: releaseItems });
-        }
+        // Checkout falhou: apaga o pedido em vez de chamar `release_stock`.
+        // O CASCADE dispara o trigger que devolve o estoque UMA única vez.
+        // Chamar `release_stock` aqui + apagar/deletar o pedido depois estornaria
+        // o estoque em DUAS vezes (estoque voltando maior que o original).
+        await supabase.from("orders").delete().eq("id", orderId);
         return;
       }
     }
@@ -923,7 +925,6 @@ export default function CheckoutPage() {
           amount={pendingPayment.amount}
           initialMethod={paymentMethod === "cartao" ? "credit_card" : "pix"}
           onComplete={finishPaymentFlow}
-          onCancel={handleCancelPayment}
         />
       )}
     </div>
