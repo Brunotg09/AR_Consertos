@@ -45,9 +45,15 @@ export function useAuth() {
 
         if (roleData) {
           setUserRole(roleData.role as UserRole);
-          setPartnerId(roleData.partner_id || null);
-        } else {
-          // Fallback 1: novo modelo — partners.user_id
+        }
+
+        // Resolve o parceiro de forma INDEPENDENTE do papel admin.
+        // Um usuário pode ser admin E parceiro com o mesmo e-mail; o vínculo
+        // de parceiro fica em partners.user_id, então não pode ser um "else"
+        // do papel — senão o admin perde o acesso (e o link) do portal parceiro.
+        let partnerIdResolved: string | null = roleData?.partner_id || null;
+
+        if (!partnerIdResolved) {
           const { data: partnerData } = await withTimeout(
             () => supabase
               .from("partners")
@@ -59,27 +65,30 @@ export function useAuth() {
           );
 
           if (!cancelled && partnerData) {
-            setUserRole("partner_gestor");
-            setPartnerId(partnerData.id);
-          } else {
-            // Fallback 2: profiles.partner_id (legado)
-            const { data: profileData } = await withTimeout(
-              () => supabase
-                .from("profiles")
-                .select("partner_id")
-                .eq("id", userId)
-                .maybeSingle(),
-              5000,
-              { data: null, error: null }
-            );
+            partnerIdResolved = partnerData.id;
+          }
+        }
 
-            if (!cancelled && profileData?.partner_id) {
-              setUserRole("partner_gestor");
-              setPartnerId(profileData.partner_id);
-            } else if (!cancelled) {
-              setUserRole(null);
-              setPartnerId(null);
-            }
+        if (!partnerIdResolved) {
+          const { data: profileData } = await withTimeout(
+            () => supabase
+              .from("profiles")
+              .select("partner_id")
+              .eq("id", userId)
+              .maybeSingle(),
+            5000,
+            { data: null, error: null }
+          );
+
+          if (!cancelled && profileData?.partner_id) {
+            partnerIdResolved = profileData.partner_id;
+          }
+        }
+
+        if (!cancelled) {
+          setPartnerId(partnerIdResolved);
+          if (!roleData && partnerIdResolved) {
+            setUserRole("partner_gestor");
           }
         }
       } catch {
